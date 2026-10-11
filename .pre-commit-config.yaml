@@ -1,0 +1,87 @@
+# Pre-commit hooks — run `task setup` once, then they run on every commit.
+# Run everything manually with `task lint` (pre-commit run --all-files).
+# Hook revs are pinned to release tags; bump them with `pre-commit autoupdate` in a dedicated PR.
+#
+# Binaries expected on PATH (see README prerequisites):
+#   terraform, tflint, trivy, hadolint, helm, kubeconform
+# yamllint, gitleaks and conventional-pre-commit are installed by pre-commit itself.
+
+minimum_pre_commit_version: "4.0.0"
+default_install_hook_types: [pre-commit, commit-msg]
+default_stages: [pre-commit]
+
+repos:
+  # --- Generic hygiene -------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: check-case-conflict
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: check-json
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+        exclude: ^charts/.*/templates/ # Go templates are not valid YAML until rendered
+      - id: detect-private-key
+      - id: detect-aws-credentials
+        args: [--allow-missing-credentials]
+
+  # --- Secret detection ------------------------------------------------------
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  # --- Terraform -------------------------------------------------------------
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.109.2
+    hooks:
+      - id: terraform_fmt
+      - id: terraform_validate
+        args:
+          - --hook-config=--retry-once-with-cleanup=true
+      - id: terraform_tflint
+        args:
+          - --args=--config=__GIT_WORKING_DIR__/.tflint.hcl
+      - id: terraform_trivy
+        args:
+          - --args=--severity=HIGH,CRITICAL
+          - --args=--skip-dirs="**/.terraform"
+
+  # --- Containers ------------------------------------------------------------
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.15.1
+    hooks:
+      - id: hadolint
+
+  # --- YAML ------------------------------------------------------------------
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+        args: [--strict, -c=.yamllint.yaml]
+
+  # --- Helm / Kubernetes -----------------------------------------------------
+  - repo: local
+    hooks:
+      - id: helm-lint-kubeconform
+        name: helm lint + kubeconform
+        entry: scripts/validate-helm.sh
+        language: script
+        files: ^charts/
+        pass_filenames: false
+
+  # --- Commit messages -------------------------------------------------------
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]

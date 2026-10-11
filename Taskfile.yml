@@ -1,0 +1,56 @@
+# Task runner — https://taskfile.dev
+# `task` lists all targets. Placeholder targets fail on purpose until their phase lands,
+# so nothing (including CI) can mistake "not implemented" for "passed".
+version: "3"
+
+tasks:
+  default:
+    desc: List available tasks
+    silent: true
+    cmds:
+      - task --list
+
+  setup:
+    desc: Install git hooks (pre-commit and commit-msg)
+    cmds:
+      - pre-commit install --install-hooks
+
+  lint:
+    desc: Run all linters and scanners on the whole repository
+    cmds:
+      - pre-commit run --all-files
+
+  build:
+    desc: Build and push the Notes API image tagged with the git SHA (Phase 4/8)
+    cmds:
+      - task: _not-implemented
+        vars:
+          PHASE: "4"
+
+  up:
+    desc: Create the local environment — 10-cluster → 20-platform → 30-apps (Phase 5–8)
+    cmds:
+      - task: _not-implemented
+        vars:
+          PHASE: "5–8"
+
+  down:
+    desc: Destroy the local environment — 30-apps → 20-platform → 10-cluster (Phase 5–8)
+    cmds:
+      - task: _not-implemented
+        vars:
+          PHASE: "5–8"
+
+  test:
+    desc: Run the validation suite against the running environment (Phase 9)
+    cmds:
+      - task: _not-implemented
+        vars:
+          PHASE: "9"
+
+  _not-implemented:
+    internal: true
+    silent: true
+    cmds:
+      - echo "Not implemented yet — arrives in Phase {{.PHASE}} (see docs/project-plan.md)." >&2
+      - exit 1
