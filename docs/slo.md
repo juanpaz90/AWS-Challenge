@@ -57,4 +57,4 @@ histogram_quantile(0.95,
   sum by (le) (rate(http_request_duration_seconds_bucket{job="notes-api",handler!~"/healthz|/readyz|/metrics"}[5m])))
 ```
 
-> Metric and label names are finalised once the instrumentation library is chosen in Phase 4.
+> Metric names and labels are implemented by `app/src/notes_api/metrics.py`: `status` is the numeric HTTP code and `handler` is the route template (e.g. `/notes/{note_id}`).

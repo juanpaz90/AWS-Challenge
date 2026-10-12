@@ -95,7 +95,51 @@ Copy this block for every significant AI interaction.
 
 ### Entries
 
-_None yet._
+### P-001 — Notes API, Dockerfile and Compose smoke test (Phase 4)
+
+- **Date:** 2026-10-11
+- **Phase / story:** Phase 4 / S1
+- **Goal:** FastAPI CRUD app with probes, metrics, JSON logs, graceful shutdown; Alembic as a separate step; hardened multi-stage image; Compose smoke test; clean scans.
+- **Mode:** generate → verify (Claude ran the tests, linters, image scan and smoke test itself)
+
+**Prompt**
+
+> Following docs/project-plan.md, let's go with Phase 4: Application and Dockerfile.
+
+The short prompt worked because `CLAUDE.md`, the plan and the ADRs supplied the constraints (pinning, non-root, no secrets, migrations not at startup).
+
+**Commits**
+
+- Raw AI output: _fill in_
+- Human corrections: _fill in_
+
+**Validation results**
+
+| Tool | Result | Findings |
+|---|---|---|
+| pytest (12 tests incl. Alembic upgrade/downgrade) | ✅ | 1 failure on first run (see correction 1) |
+| ruff check / format | ✅ | 3 files reformatted |
+| hadolint | ✅ | none |
+| trivy image (HIGH/CRITICAL, fixable) | ✅ after fix | 4 HIGH on first scan (see correction 2) |
+| Compose smoke test (9 checks) | ✅ after fixes | 1 false failure, 1 false pass (see corrections 3–4) |
+
+**Corrections and why** (found by the verification loop, before human review)
+
+| # | What the AI produced | What changed | Why |
+|---|---|---|---|
+| 1 | Metrics middleware resolved the route template **before** calling the app, by re-matching routes | Read `scope["route"]` **after** routing | With Starlette 1.7 the pre-match never matched, so every request was labelled `handler="unmatched"`. A unit test asserting route-template labels caught it. Without that test, the SLO queries would have silently aggregated everything into one series. |
+| 2 | Runtime image kept the base image's `pip` | `pip uninstall` in the runtime stage | Trivy found 4 fixable HIGH CVEs in pip's vendored `urllib3`/`msgpack`/`setuptools`. The app never uses pip at runtime. |
+| 3 | Smoke check "DB not published" used `docker compose port db 5432` | Inspect the container's real port bindings | `compose port` exits 0 even when nothing is published, so the check failed although the DB was correctly private. |
+| 4 | Smoke test ran `compose down/up` without the image tag | Pass `IMAGE_TAG` through and use `up --no-build` | Compose silently **built a second image tagged `dev`** and the test passed against it. A test that can swap the artifact under test is worse than no test. Caught because the reported `version` changed. |
+| 5 | Image tag "dirty" detection used `git diff` | Use `git status --porcelain` | `git diff` ignores untracked files, so a build from uncommitted code was tagged as a clean SHA. |
+| 6 | Dev dependency `httpx` | `httpx2` | Starlette's TestClient now emits a deprecation warning for `httpx`. |
+
+**Assumptions / uncertainties**
+
+- Python 3.14.8 chosen over 3.15 because 3.15 images were still release candidates.
+- One uvicorn worker per container (Prometheus client is not multiprocess-aware here); scaling is by replicas.
+- 44 unfixed HIGH Debian findings accepted for now (see `app/README.md`).
+
 
 ---
 

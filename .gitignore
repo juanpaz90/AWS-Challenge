@@ -46,3 +46,14 @@ terraform.rc
 
 # Claude Code personal overrides (project settings in .claude/settings.json are committed)
 .claude/settings.local.json
+
+# Local env files (generated, may hold throwaway credentials)
+.env
+.env.*
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/

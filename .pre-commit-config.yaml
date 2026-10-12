@@ -62,6 +62,15 @@ repos:
     hooks:
       - id: hadolint
 
+  # --- Python (Notes API) ---------------------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.0
+    hooks:
+      - id: ruff-check
+        files: ^app/
+      - id: ruff-format
+        files: ^app/
+
   # --- YAML ------------------------------------------------------------------
   - repo: https://github.com/adrienverge/yamllint
     rev: v1.38.0

@@ -46,7 +46,9 @@ Full diagrams in [docs/architecture.md](docs/architecture.md).
 
 | Tool | Version | Used for |
 |---|---|---|
-| Docker | 29.7.2 | kind nodes, image builds |
+| Docker | 29.7.2 (Colima) | kind nodes, image builds |
+| docker-buildx · docker compose | 0.38.0 · 5.5.1 | BuildKit builds, local smoke stack |
+| uv | 0.12.24 | Python 3.14 + locked dependencies for the Notes API |
 | terraform | 1.16.0 (≥ 1.10 required) | IaC |
 | helm | 4.3.0 | charts, `helm lint` |
 | task (go-task) | 3.54.0 | task runner |

@@ -3,6 +3,16 @@
 # so nothing (including CI) can mistake "not implemented" for "passed".
 version: "3"
 
+vars:
+  IMAGE: notes-api
+  VCS_REF:
+    sh: git rev-parse HEAD
+  # Short SHA; "-dirty" when app/ has uncommitted changes, so a tag never lies about its source.
+  IMAGE_TAG:
+    sh: tag="$(git rev-parse --short HEAD)"; [ -z "$(git status --porcelain -- app)" ] || tag="${tag}-dirty"; echo "$tag"
+  COMPOSE:
+    sh: docker compose version >/dev/null 2>&1 && echo "docker compose" || echo "docker-compose"
+
 tasks:
   default:
     desc: List available tasks
@@ -21,11 +31,59 @@ tasks:
       - pre-commit run --all-files
 
   build:
-    desc: Build and push the Notes API image tagged with the git SHA (Phase 4/8)
+    desc: Build the Notes API image tagged with the git SHA (push to the kind registry arrives in Phase 8)
     cmds:
-      - task: _not-implemented
-        vars:
-          PHASE: "4"
+      - >-
+        docker build app
+        --tag {{.IMAGE}}:{{.IMAGE_TAG}}
+        --build-arg VERSION={{.IMAGE_TAG}}
+        --build-arg VCS_REF={{.VCS_REF}}
+        --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  scan:
+    desc: Lint the Dockerfile and scan the built image for HIGH/CRITICAL fixable vulnerabilities
+    deps: [build]
+    cmds:
+      - hadolint app/Dockerfile
+      - trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 {{.IMAGE}}:{{.IMAGE_TAG}}
+
+  app:test:
+    desc: Run the Notes API unit and migration tests
+    dir: app
+    cmds:
+      - uv run pytest
+
+  app:lint:
+    desc: Lint and format-check the Notes API code
+    dir: app
+    cmds:
+      - uv run ruff check .
+      - uv run ruff format --check .
+
+  compose:up:
+    desc: Start PostgreSQL → migrations → API with Docker Compose on http://127.0.0.1:8080
+    dir: app
+    cmds:
+      # Throwaway local DB password, generated once and kept out of Git.
+      - test -f .env || printf 'DB_PASSWORD=%s\n' "$(openssl rand -hex 24)" > .env
+      - IMAGE_TAG={{.IMAGE_TAG}} VCS_REF={{.VCS_REF}} {{.COMPOSE}} up -d --build
+
+  compose:smoke:
+    desc: Run the end-to-end checks against the Compose stack
+    cmds:
+      - IMAGE_TAG={{.IMAGE_TAG}} COMPOSE="{{.COMPOSE}}" tests/smoke/compose.sh
+
+  compose:down:
+    desc: Stop the Compose stack and keep the database volume
+    dir: app
+    cmds:
+      - IMAGE_TAG={{.IMAGE_TAG}} {{.COMPOSE}} down
+
+  compose:clean:
+    desc: Stop the Compose stack and delete the database volume
+    dir: app
+    cmds:
+      - IMAGE_TAG={{.IMAGE_TAG}} {{.COMPOSE}} down --volumes
 
   up:
     desc: Create the local environment — 10-cluster → 20-platform → 30-apps (Phase 5–8)

@@ -1,0 +1,13 @@
+# Only pyproject.toml, uv.lock, README.md, src/, alembic.ini and migrations/ belong in the image.
+.venv/
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+.ruff_cache/
+tests/
+.env
+.env.*
+Dockerfile
+.dockerignore
+compose.yaml
+.python-version

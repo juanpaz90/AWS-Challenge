@@ -48,16 +48,16 @@ Bonus priority follows the plan: Observability → CI/CD → AWS IaC → GitOps 
 
 **As a** developer, **I want** the Notes API packaged as a hardened container image, **so that** it runs the same way on a laptop, in CI and on Kubernetes.
 
-**Acceptance criteria**
+**Acceptance criteria** — ✅ met in Phase 4 (`task app:test`, `task scan`, `task compose:smoke`)
 
-- [ ] **Given** the source in `app/`, **when** I run `task build`, **then** an image `notes-api:<git-sha>` is built from a multi-stage Dockerfile with pinned base image versions.
-- [ ] The container runs as a non-root user and works with a read-only root filesystem.
-- [ ] The API exposes CRUD for notes, plus `/healthz`, `/readyz` and `/metrics`.
-- [ ] Logs are structured JSON and include the pod/host name.
-- [ ] The process shuts down gracefully on `SIGTERM` (in-flight requests complete).
-- [ ] Database migrations run as a separate Alembic command, never at application startup.
-- [ ] `hadolint` passes and `trivy image` reports no HIGH/CRITICAL findings, or each accepted finding is documented.
-- [ ] Docker Compose (API + Postgres) works end to end, and data survives a container restart.
+- [x] **Given** the source in `app/`, **when** I run `task build`, **then** an image `notes-api:<git-sha>` is built from a multi-stage Dockerfile with pinned base image versions.
+- [x] The container runs as a non-root user and works with a read-only root filesystem.
+- [x] The API exposes CRUD for notes, plus `/healthz`, `/readyz` and `/metrics`.
+- [x] Logs are structured JSON and include the pod/host name.
+- [x] The process shuts down gracefully on `SIGTERM` (in-flight requests complete).
+- [x] Database migrations run as a separate Alembic command, never at application startup.
+- [x] `hadolint` passes and `trivy image` reports no HIGH/CRITICAL findings, or each accepted finding is documented.
+- [x] Docker Compose (API + Postgres) works end to end, and data survives a container restart.
 
 ---
 
