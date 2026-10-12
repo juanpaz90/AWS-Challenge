@@ -7,12 +7,18 @@
 
 | Item | Value |
 |---|---|
-| Assistant | Claude Code (CLI), model: _fill in_ |
-| Project rules | [`CLAUDE.md`](../CLAUDE.md) — architecture, conventions, hard rules, definition of done |
-| Context sources | ADRs in [`adr/`](adr/README.md), [`architecture.md`](architecture.md), [`project-plan.md`](project-plan.md) |
-| Up-to-date docs | Terraform MCP server: _yes/no_ |
-| Permissions | Allowed: read files, `fmt`, `validate`, `tflint`, `trivy`, `checkov`, `helm lint`/`template`, `kubeconform`, `kubectl get`/`describe`. **Require approval:** `terraform apply`/`destroy`, `helm install`/`upgrade`/`uninstall`, any `kubectl` write. |
-| Credentials | No AWS credentials in the Claude session. |
+| Assistant | Claude Code (CLI), model: Claude Opus 5.5 (`claude-opus-5-5`) |
+| Project rules | [`CLAUDE.md`](../CLAUDE.md) — architecture, conventions, hard rules, guardrails, definition of done |
+| Context sources | ADRs in [`adr/`](adr/README.md), [`architecture.md`](architecture.md), [`project-plan.md`](project-plan.md), [`user-story.md`](user-story.md) |
+| Up-to-date docs | Terraform MCP server `hashicorp/terraform-mcp-server:1.3.0` (Docker, stdio), configured in [`.mcp.json`](../.mcp.json); provider/module docs are read for the **pinned** version instead of relying on model memory |
+| Permissions | [`.claude/settings.json`](../.claude/settings.json), committed so the guardrails are reviewable. **Allowed:** read-only and validation commands (`terraform fmt/validate/init/plan`, `tflint`, `trivy`, `checkov`, `hadolint`, `yamllint`, `kubeconform`, `helm lint/template/show`, `kubectl get/describe/logs/diff`). **Ask every time:** `terraform apply/destroy/import/state rm`, `helm install/upgrade/uninstall/rollback`, every `kubectl` write, `kind create/delete`, `task up/down/build`, `git push`. **Denied:** reading `~/.aws`, `~/.kube/config`, `.env`, `*.tfstate`; `aws configure/sso/sts`; `eksctl create/delete`. |
+| Credentials | No AWS credentials in the Claude session: the settings `env` block points `AWS_CONFIG_FILE` / `AWS_SHARED_CREDENTIALS_FILE` at `/dev/null` and blanks `AWS_PROFILE` and the key variables, so Terraform and the AWS CLI find no credentials. AWS stacks are validated offline; AWS applies are run by a human outside the session. |
+| Commit hooks | [`.pre-commit-config.yaml`](../.pre-commit-config.yaml) runs the same validators on every commit, so AI output is checked even when nobody asks for it |
+
+### Guardrail design notes
+
+- Permission rules match command prefixes, so flag-first forms (`terraform -chdir=… apply`, `kubectl -n notes delete …`) have their own `ask` patterns. Ask/deny rules take precedence over allow rules, so any ambiguous match falls to the safer side.
+- The guardrails reduce risk; they are not a sandbox. A command could still reach credentials by an unusual path, so the final review and the `apply` decision stay with the human ([plan §8.6](project-plan.md#86-do-not-delegate)).
 
 ### Workflow per slice
 

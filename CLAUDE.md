@@ -33,7 +33,7 @@ Do **not** introduce: ingress-nginx (retired), Bitnami charts/images, Promtail (
   - No hardcoded region, account ID, cluster name or image tag; pass them as variables.
   - Stacks exchange data via outputs and `terraform_remote_state`.
   - Tags/labels come from a shared `tags` / `labels` variable.
-- **Versions:** pin Terraform, providers, charts and images exactly. **Never `latest`.** If unsure a version or argument exists, say so — do not guess. Verify against the pinned version's docs.
+- **Versions:** pin Terraform, providers, charts and images exactly. **Never `latest`.** If unsure a version or argument exists, say so — do not guess. Verify against the pinned version's docs: use the `terraform` MCP server (`.mcp.json`) for provider and module docs, and `helm show values <chart> --version <v>` for charts.
 - **Helm:** `values.schema.json` for every chart; per-environment values files; secrets referenced by name (`existingSecret`), never templated.
 - **Images:** built by `task build` / CI, tagged `<git-sha>`. Terraform never builds images.
 - **Naming:** lowercase, hyphenated; Kubernetes recommended labels (`app.kubernetes.io/*`).
@@ -48,6 +48,15 @@ Do **not** introduce: ingress-nginx (retired), Bitnami charts/images, Promtail (
 5. **Least-privilege IAM.** No `*` actions or resources without an inline justification. Use Pod Identity and GitHub OIDC; no static keys.
 6. **No manual resource creation.** Everything through Terraform, Helm or GitOps.
 7. **Never run** `terraform apply`/`destroy`, `helm install`/`upgrade`/`uninstall`, or `kubectl` write commands without explicit human approval.
+8. **No AWS credentials in the session.** `.claude/settings.json` blanks the AWS credential env vars and denies access to `~/.aws`. Never try to work around it; AWS stacks are validated offline (`validate`, `tflint`, `trivy`, `infracost`), and AWS applies are run by the human.
+
+## Guardrails (`.claude/settings.json`)
+
+| Tier | Commands |
+|---|---|
+| **Allowed** | Read-only and validation: `terraform fmt/validate/init/plan/show/output`, `tflint`, `trivy`, `checkov`, `hadolint`, `yamllint`, `kubeconform`, `pre-commit run`, `helm lint/template/show/list/status`, `kubectl get/describe/logs/diff`, `git status/diff/log` |
+| **Ask** (human approves each time) | `terraform apply/destroy/import/state rm\|mv`, `helm install/upgrade/uninstall/rollback`, every `kubectl` write (`apply`, `delete`, `patch`, `scale`, `rollout`, `drain`, `exec`, …), `kind create/delete`, `task up/down/build`, `git push` |
+| **Denied** | Reading `~/.aws`, `~/.kube/config`, `.env` and `*.tfstate` files; `aws configure/sso/sts`; `eksctl create/delete` |
 
 ## Definition of done
 
