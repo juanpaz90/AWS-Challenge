@@ -9,9 +9,10 @@
 | Bring everything up | `task up` |
 | Run the validation suite | `task test` |
 | Tear everything down | `task down` |
-| Cluster only | `task cluster:up` / `task cluster:down` |
+| Cluster only | `task cluster:up` / `task cluster:down` (add `-- -auto-approve` to skip the prompt) |
+| Verify cluster / verify teardown | `task cluster:check` / `task cluster:check-clean` |
 | Build + push image | `task build` |
-| Kube context | `kubectl config use-context kind-<cluster-name>` |
+| Kube context | `kubectl --context kind-notes-local …` |
 | Grafana | `https://grafana.localtest.me` |
 | API | `https://api.localtest.me` |
 

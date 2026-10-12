@@ -57,3 +57,9 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+
+# Terraform: generated node config; committed tfvars hold no secrets (gitleaks enforces)
+infra/**/.generated/
+!infra/environments/*/*/terraform.tfvars
+# Modules never pin providers; only root stacks commit lock files
+infra/modules/**/.terraform.lock.hcl

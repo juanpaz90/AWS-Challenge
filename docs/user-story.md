@@ -65,14 +65,14 @@ Bonus priority follows the plan: Observability → CI/CD → AWS IaC → GitOps 
 
 **As a** platform engineer, **I want** the local Kubernetes cluster and image registry created only by Terraform, **so that** anyone can reproduce the environment with one command.
 
-**Acceptance criteria**
+**Acceptance criteria** — ✅ met in Phase 5 (`task cluster:up` / `cluster:check` / `cluster:down` / `cluster:check-clean`)
 
-- [ ] `task cluster:up` creates a kind cluster (1 control plane + 2 workers) and a local registry at `localhost:5001`.
-- [ ] The kind node image is pinned to the same Kubernetes minor version as the target EKS version.
-- [ ] Host ports 80 and 443 are mapped to the cluster; the default CNI is disabled.
-- [ ] kind nodes can pull images from the local registry.
-- [ ] A second `terraform apply` shows **no changes**.
-- [ ] `task cluster:down` removes the cluster and registry with no leftover containers, networks or volumes.
+- [x] `task cluster:up` creates a kind cluster (1 control plane + 2 workers) and a local registry at `localhost:5001`.
+- [x] The kind node image is pinned to the same Kubernetes minor version as the target EKS version.
+- [x] Host ports 80 and 443 are mapped to the cluster; the default CNI is disabled.
+- [x] kind nodes can pull images from the local registry.
+- [x] A second `terraform apply` shows **no changes**.
+- [x] `task cluster:down` removes the cluster and registry with no leftover containers, networks or volumes.
 
 ---
 

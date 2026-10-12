@@ -143,6 +143,62 @@ The short prompt worked because `CLAUDE.md`, the plan and the ADRs supplied the 
 
 ---
 
+### P-002 — `kind-cluster` module and `local/10-cluster` stack (Phase 5)
+
+- **Date:** 2026-10-11
+- **Phase / story:** Phase 5 / S2
+- **Goal:** kind cluster (1 control plane + 2 workers, Kubernetes = EKS minor, default CNI off, 80/443 mappings) and a local registry with a containerd mirror, created and destroyed only by Terraform.
+- **Mode:** research → generate → validate offline → plan → apply → test → destroy → test → re-apply
+
+**Prompt**
+
+> Now lets go with Phase 5: Stack local/10-cluster
+
+**Commits**
+
+- Raw AI output: _fill in_
+- Human corrections: _fill in_
+
+**Verified against the pinned versions before writing code** (these would otherwise have been plausible-looking mistakes)
+
+| Question | Finding | Effect on the code |
+|---|---|---|
+| Which node image? | `tehcyx/kind 0.11.0` embeds **kind v0.31.0**; the installed kind CLI is v0.33.0 | Node image taken from the v0.31.0 release notes (`v1.35.0@sha256:452d…`), not the latest kind release |
+| Which Kubernetes minor? | EKS 1.37/1.36/1.35 in standard support; kind v0.31.0 ships up to 1.35 | 1.35 for both kind and EKS |
+| Where does the provider write kubeconfig? | Unset `kubeconfig_path` → a `<name>-config` credentials file in the stack's working directory | Path set explicitly to `~/.kube/config`; provider removes the context on destroy |
+| `wait_for_ready` default? | `false` | Kept `false` explicitly: with the CNI disabled nodes never become Ready |
+| docker provider 4.x schema | `labels` are `label`/`value` blocks; provider ignores Docker CLI contexts | Dynamic `labels` blocks; `DOCKER_HOST` resolved from the active context by the task |
+| kind's registry guide | Uses `docker exec` to write `hosts.toml` into each node | Replaced by a Terraform-rendered `hosts.toml` mounted via `extraMounts` (declarative) |
+| Who deletes the `kind` network? | kind never deletes it | Network created by Terraform, so `destroy` removes it |
+
+**Validation results**
+
+| Tool | Result | Findings |
+|---|---|---|
+| terraform fmt / validate | ✅ | `fmt` re-aligned one block |
+| tflint (recommended preset) | ✅ | none |
+| trivy config | ✅ | none |
+| terraform-docs (pre-commit) | ✅ | table formatting normalised on first run |
+| plan | ✅ | 5 to add, as expected |
+| apply + `cluster:check` (6 checks) | ✅ | incl. a real image pull through the mirror |
+| re-plan (`-detailed-exitcode`) | ✅ | exit 0, no changes |
+| destroy + `cluster:check-clean` | ✅ after fix | see correction 1 |
+
+**Corrections and why**
+
+| # | What the AI produced | What changed | Why |
+|---|---|---|---|
+| 1 | `cluster:down` = `terraform destroy` only | Also removes `.generated/`; the leftover check covers it | `local_file` deletes the file but not the directories it created, so empty folders survived the destroy. Caught because the leftover check listed the directory. |
+| 2 | Lock file with darwin_arm64 hashes only | `terraform providers lock` for linux_amd64 / darwin_amd64 / darwin_arm64 | CI (Phase 11) runs on linux_amd64 and would fail `init` with a checksum mismatch. |
+
+**Assumptions / uncertainties**
+
+- Colima mounts `$HOME` into its VM by default; `generated_dir` must be under it. A different Docker setup may need another path.
+- The `local-registry-hosting` ConfigMap from kind's guide is a Kubernetes resource, so it belongs in `20-platform` (Phase 6), not here.
+- The custom `kind` network is a plain bridge (no IPv6), which is enough for an IPv4-only cluster.
+
+---
+
 ## 4. Validation summary
 
 | Slice | validate | tflint | checkov/trivy | helm lint | kubeconform | Applied | Tests |

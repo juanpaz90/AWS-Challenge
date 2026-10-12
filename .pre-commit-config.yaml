@@ -55,6 +55,9 @@ repos:
         args:
           - --args=--severity=HIGH,CRITICAL
           - --args=--skip-dirs="**/.terraform"
+      - id: terraform_docs
+        args:
+          - --args=--config=.terraform-docs.yml
 
   # --- Containers ------------------------------------------------------------
   - repo: https://github.com/hadolint/hadolint

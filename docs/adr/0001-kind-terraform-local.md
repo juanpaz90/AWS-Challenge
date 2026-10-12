@@ -51,5 +51,6 @@ Use **kind** (Kubernetes in Docker) for the local cluster, managed entirely by *
 
 **Follow-ups**
 
-- Verify the latest kind node image for the chosen EKS minor version in Phase 0.
+- ~~Verify the latest kind node image for the chosen EKS minor version.~~ Done in Phase 5: **Kubernetes 1.35** (`kindest/node:v1.35.0`). Node images must be published for the kind version *embedded in the provider* (`tehcyx/kind 0.11.0` → kind v0.31.0), not the latest kind CLI; v1.35.0 is the newest such image, and EKS 1.35 has standard support until 2027-03-27.
+- The registry mirror is configured declaratively (generated `hosts.toml` mounted into every node) instead of kind's `docker exec` guide, so no imperative step remains.
 - Document `cloud-provider-kind` as a Linux alternative for `LoadBalancer` Services.

@@ -12,6 +12,11 @@ vars:
     sh: tag="$(git rev-parse --short HEAD)"; [ -z "$(git status --porcelain -- app)" ] || tag="${tag}-dirty"; echo "$tag"
   COMPOSE:
     sh: docker compose version >/dev/null 2>&1 && echo "docker compose" || echo "docker-compose"
+  # The Terraform docker provider ignores Docker CLI contexts (Colima, Docker Desktop), so
+  # resolve the active context's socket unless DOCKER_HOST is already set.
+  DOCKER_HOST:
+    sh: echo "${DOCKER_HOST:-$(docker context inspect | jq -r '.[0].Endpoints.docker.Host')}"
+  CLUSTER_STACK: infra/environments/local/10-cluster
 
 tasks:
   default:
@@ -84,6 +89,36 @@ tasks:
     dir: app
     cmds:
       - IMAGE_TAG={{.IMAGE_TAG}} {{.COMPOSE}} down --volumes
+
+  cluster:up:
+    desc: Create the kind cluster and local registry (local/10-cluster). Extra args go to terraform apply, e.g. -- -auto-approve
+    dir: "{{.CLUSTER_STACK}}"
+    env:
+      DOCKER_HOST: "{{.DOCKER_HOST}}"
+    cmds:
+      - terraform init -input=false
+      - terraform apply {{.CLI_ARGS}}
+
+  cluster:down:
+    desc: Destroy the kind cluster and local registry (local/10-cluster). Extra args go to terraform destroy
+    dir: "{{.CLUSTER_STACK}}"
+    env:
+      DOCKER_HOST: "{{.DOCKER_HOST}}"
+    cmds:
+      - terraform init -input=false
+      - terraform destroy {{.CLI_ARGS}}
+      # local_file removes hosts.toml but not the directories it created.
+      - rm -rf .generated
+
+  cluster:check:
+    desc: Verify the running cluster (nodes, version, port mappings, registry mirror)
+    cmds:
+      - tests/infra/10-cluster.sh up
+
+  cluster:check-clean:
+    desc: Verify nothing from 10-cluster is left after cluster:down
+    cmds:
+      - tests/infra/10-cluster.sh down
 
   up:
     desc: Create the local environment — 10-cluster → 20-platform → 30-apps (Phase 5–8)

@@ -57,7 +57,10 @@ Full diagrams in [docs/architecture.md](docs/architecture.md).
 | trivy | 0.75.0 | IaC and image scanning |
 | hadolint | 2.15.1 | Dockerfile linting |
 | kubeconform | 0.8.0 | manifest validation |
-| kind · kubectl · terraform-docs · helm-docs · checkov · k6 · infracost | _tbd_ | later phases |
+| kubectl | 1.35.9 | must stay within one minor of the cluster (1.35) |
+| kind (CLI, optional) | 0.33.0 | inspection only — clusters are created by Terraform (embedded kind v0.31.0) |
+| terraform-docs | 0.24.0 | module READMEs |
+| helm-docs · checkov · k6 · infracost | _tbd_ | later phases |
 
 yamllint, gitleaks and the Conventional Commits checker are installed automatically by pre-commit.
 

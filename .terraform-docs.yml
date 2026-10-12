@@ -1,0 +1,12 @@
+# terraform-docs config: injects the inputs/outputs tables between the markers in README.md.
+formatter: markdown table
+output:
+  file: README.md
+  mode: inject
+sort:
+  enabled: true
+  by: required
+settings:
+  anchor: false
+  hide-empty: true
+  lockfile: true
