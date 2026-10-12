@@ -33,12 +33,15 @@
 
 ## 2. Representative part
 
-The representative AI-assisted parts are:
+The plan named two representative parts: the AWS EKS module (Phase 13) and the Notes API Helm chart (Phase 7). **Phases 12–14 (GitOps, AWS IaC, AWS deployment) are deferred**, so the EKS module does not exist yet. The documented representative parts are the ones that were built, deployed and tested:
 
-- **A.** AWS EKS module (`infra/modules/eks`) — Phase 13
-- **B.** Notes API Helm chart (`charts/notes-api`) — Phase 7
+| | Part | Why it is representative | Log entry |
+|---|---|---|---|
+| **A** | `infra/modules/platform-addons` + `local/20-platform` | The hardest Terraform in the repo. It has CRD/CR ordering, eight Helm releases in dependency order, and destroy order. The AI's two most instructive mistakes happened here. | [P-003](#p-003--platform-addons-module-and-local20-platform-stack-phase-6), [P-006](#p-006--local-validation-suite-task-test-phase-9) |
+| **B** | `charts/notes-api` | A production-grade chart with security context, NetworkPolicies, HPA/PDB, a migration hook and a schema. It is validated with 25 behavioural tests and a PSA-restricted dry run. | [P-004](#p-004--chartsnotes-api-helm-chart-phase-7) |
+| **C** | `observability/` rules and dashboard | A case where generated code passed every static check but was wrong at runtime. | [P-007](#p-007--observability-as-code-phase-10) |
 
-For each, sections 3–8 below are filled in.
+When Phase 13 is done, the EKS module gets its own entry in this format. That includes the IAM scope review and Infracost (§6–7).
 
 ---
 
@@ -110,8 +113,7 @@ The short prompt worked because `CLAUDE.md`, the plan and the ADRs supplied the 
 
 **Commits**
 
-- Raw AI output: _fill in_
-- Human corrections: _fill in_
+- Phase commit: `3e416f8`. The raw output and corrections are in one commit (see [§5](#5-corrections-summary)).
 
 **Validation results**
 
@@ -156,8 +158,7 @@ The short prompt worked because `CLAUDE.md`, the plan and the ADRs supplied the 
 
 **Commits**
 
-- Raw AI output: _fill in_
-- Human corrections: _fill in_
+- Phase commit: `cfa54ea`. The raw output and corrections are in one commit (see [§5](#5-corrections-summary)).
 
 **Verified against the pinned versions before writing code** (these would otherwise have been plausible-looking mistakes)
 
@@ -212,8 +213,7 @@ The short prompt worked because `CLAUDE.md`, the plan and the ADRs supplied the 
 
 **Commits**
 
-- Raw AI output: _fill in_
-- Human corrections: _fill in_
+- Phase commit: `9f138df`. The raw output and corrections are in one commit (see [§5](#5-corrections-summary)).
 
 **Verified against the pinned versions before writing code**
 
@@ -269,8 +269,7 @@ Both failed applies stopped before creating anything (only the namespaces existe
 
 **Commits**
 
-- Raw AI output: _fill in_
-- Human corrections: _fill in_
+- Phase commit: `24a1eb1`. The raw output and corrections are in one commit (see [§5](#5-corrections-summary)).
 
 **Verified before writing code**
 
@@ -321,8 +320,7 @@ Both failed applies stopped before creating anything (only the namespaces existe
 
 **Commits**
 
-- Raw AI output: _fill in_
-- Human corrections: _fill in_
+- Phase commit: `ed00fd8`. The raw output and corrections are in one commit (see [§5](#5-corrections-summary)).
 
 **Verified before writing code**
 
@@ -377,8 +375,7 @@ Both failed applies stopped before creating anything (only the namespaces existe
 
 **Commits**
 
-- Raw AI output: _fill in_
-- Human corrections: _fill in_
+- Phase commit: `7da3449`. The raw output and corrections are in one commit (see [§5](#5-corrections-summary)).
 
 **Final evidence (fresh `task up` → `task down` → clean check → `task up` → `task test`, 31.6 min)**
 
@@ -427,8 +424,7 @@ Both failed applies stopped before creating anything (only the namespaces existe
 
 **Commits**
 
-- Raw AI output: _fill in_
-- Human corrections: _fill in_
+- Phase commit: `a6deff7`. The raw output and corrections are in one commit (see [§5](#5-corrections-summary)).
 
 **Verified against the live system before writing queries**
 
@@ -468,44 +464,236 @@ Both failed applies stopped before creating anything (only the namespaces existe
 
 ---
 
+### P-008 — CI/CD with GitHub Actions (Phase 11)
+
+- **Date:** 2026-10-12
+- **Phase / story:** Phase 11 / S8
+- **Goal:** a CI workflow that runs the same checks as local development, an end-to-end job on an ephemeral kind cluster, and an image release from `main`, with no static cloud credentials.
+- **Mode:** research (action versions, checksums) → generate → actionlint → container test of the installer → fix
+
+**Prompt**
+
+> lets go with Phase 11: CI/CD with GitHub Actions
+
+**Commits**
+
+- Phase commit: `037c2a6`. It was pushed to `origin/main`. The first GitHub run's result is not recorded here yet.
+
+**Verified before writing code**
+
+| Question | Finding | Effect |
+|---|---|---|
+| Action pins | `git ls-remote` gives tag-object SHAs for annotated tags | Pinned to the peeled `^{}` **commit** SHAs, with the version in a comment |
+| Tools without a setup action (kubeconform, hadolint, terraform-docs, helm-docs) | Each project publishes a checksum file | The installer verifies every download with `sha256sum --check --strict` |
+| Repository visibility | Private (the public API returns 404) | Signed attestations need a public repo or Enterprise Cloud, so that step only runs on public repos. Docs-only changes skip CI to save free-plan minutes. |
+
+**Validation results**
+
+| Tool | Result | Findings |
+|---|---|---|
+| actionlint 1.7.12 (+ shellcheck) | ✅ after fix | correction 2 |
+| installer in `ubuntu:24.04` (amd64) | ✅ after fix | all 4 checksums OK; correction 3 |
+| pre-commit, all files (= the `lint` job) | ✅ | yamllint line length, correction 2 |
+| first run on GitHub | **not verified in session** | needs `gh` or the Actions tab |
+
+**Corrections and why**
+
+| # | What the AI produced | What changed | Why |
+|---|---|---|---|
+| 1 | Unconditional `attest-build-provenance` step | Runs only when `!github.event.repository.private` | On a private repo on the free plan the step fails, so it would turn every `main` release red |
+| 2 | `${{ steps.*.outputs.* }}` interpolated inside the `run:` script | Values passed through `env:` and read as shell variables | yamllint flagged the line length. The values here are our own, so this was not exploitable, but template expansion inside a script is the Actions injection pattern, and using `env:` is the safe habit. |
+| 3 | `kubeconform --version` | `kubeconform -v` | The flag does not exist, so the installer exited non-zero after installing correctly |
+
+**Assumptions / uncertainties**
+
+- The e2e job assumes `task up` fits on a hosted `ubuntu-24.04` runner. **On a private repository that runner is smaller (2 vCPU, 7 GB RAM) than on a public one (4 vCPU, 16 GB).** Three kind nodes plus the full observability stack may not fit in 7 GB; this is the most likely first CI failure. It is not proven until a run completes.
+- "PRs blocked on failing checks" needs branch protection. That conflicts with the current direct-to-`main` workflow, so it is an open decision.
+
+---
+
+### P-009 — Finalising this document (Phase 15)
+
+- **Date:** 2026-10-12
+- **Phase / story:** Phase 15 / S11
+- **Goal:** answer every bullet of the exercise's GenAI section with evidence.
+
+**Prompt**
+
+> For now we can skip phases 12, 13 and 14. So let go to Phase 15: GenAI documentation
+
+**Method.** The phases were committed one commit per phase, so the raw output was not in Git. Claude recovered it from the Claude Code session transcripts (`~/.claude/projects/<project>/*.jsonl`), which record every file Claude wrote. It extracted the **first version of each file** and diffed it against the committed version. Several fixes also landed in a later phase than the code they fix, so for those Git shows the before/after directly (§5).
+
+---
+
 ## 4. Validation summary
 
-| Slice | validate | tflint | checkov/trivy | helm lint | kubeconform | Applied | Tests |
-|---|---|---|---|---|---|---|---|
-| | | | | | | | |
+Results from the prompt log. "Applied" means applied to kind and checked by the slice's scripted checks.
+
+| Slice | Static checks | Behavioural / live checks | Applied | Re-apply clean |
+|---|---|---|---|---|
+| P-001 app + image | ruff, hadolint, trivy image (fixable HIGH/CRITICAL gate) | 12 pytest tests incl. Alembic up/down; 9-check Compose smoke test | Compose | — |
+| P-002 `10-cluster` | fmt, validate, tflint, trivy config, terraform-docs | `cluster:check` (6) / `cluster:check-clean` | ✅ | ✅ |
+| P-003 `20-platform` | fmt, validate, tflint, trivy config; helm lint + kubeconform on `platform-config` | `platform:check` (11) | ✅ (third attempt) | ✅ |
+| P-004 chart | helm lint --strict ×3 envs, kubeconform -strict (13/13), trivy config, helm-docs | 25 chart tests (11 must-reject value sets); server-side dry run in a PSA-restricted namespace | ✅ (P-005) | ✅ |
+| P-005 `30-apps` | fmt, validate, tflint, trivy config | `apps:check` (9); full `task down` → `task up` from zero, 26 checks | ✅ | ✅ after fix |
+| P-006 `task test` | shellcheck (pre-commit) | 10 functional checks from a fresh environment | ✅ | ✅ (check 10) |
+| P-007 observability | promtool check (19 rules) + promtool test (13 cases) | all 19 dashboard queries return data under load; alert fire drill | ✅ | ✅ |
+| P-008 CI | actionlint + shellcheck, yamllint | installer checksums in a container | GitHub run not verified | — |
+
+`checkov` was not added: `trivy config` covers the same Terraform and Kubernetes misconfiguration checks in one tool already in the pre-commit hooks. Every suppression is justified inline. The two accepted MEDIUM findings are listed in P-004.
 
 ## 5. Corrections summary
 
-Aggregated from the prompt log: the most important before/after diffs, with links to the correction commits.
+### Deviation: raw output and corrections were not committed separately
 
-| Category | Example | Commit |
+The process (§1, `CONTRIBUTING.md`) asks for a commit of the raw AI output followed by a separate correction commit. **This was not followed.** Each phase went in as one commit after the verification loop had already fixed what it found. The before/after evidence below comes from two sources instead:
+
+- **Git, across phases.** When a bug was found in a later phase, the history shows the before and after: `git diff <before> <after> -- <file>`.
+- **The session transcript.** It holds the first version of every file Claude wrote (the raw output). The diffs below marked *transcript* compare that version with the committed one.
+
+From Phase 16 on, the two-commit rule applies again.
+
+### By category
+
+| Category | Example | Evidence |
 |---|---|---|
-| Hallucinated / deprecated argument | | |
-| Security (IAM, securityContext, exposure) | | |
-| Hardcoded values / `latest` tags | | |
-| Provider config in modules / cross-stack cycles | | |
-| Missing probes / limits | | |
+| Outdated knowledge of a pinned version | Calico v3.33 chart no longer ships CRDs; one `helm_release` assumed it did (P-003 #1) | transcript; diff A |
+| Platform limit not anticipated | Calico CRDs exceed Helm's 1 MiB release Secret (P-003 #2) | transcript; diff A |
+| Missing dependency / destroy order | Namespaces destroyed after the CNI, so teardown hung (P-006 #5) | `git diff 9f138df 7da3449 -- infra/modules/platform-addons/namespaces.tf`; diff B |
+| Runtime-only logic bug | Route label resolved before routing, so every request was `unmatched` (P-001 #1) | transcript; diff C |
+| Wrong at runtime, valid statically | Error ratio empty instead of 0 with no 5xx (P-007 #1) | transcript; diff D |
+| Non-reproducible artifact | Build date = now, plus provenance, gave a new digest per build (P-005 #2) | `git diff 3e416f8 ed00fd8 -- Taskfile.yml`; diff E |
+| Availability gap | One Envoy replica, no PDB; preStop too short (P-006 #1, #4) | `git diff 9f138df 7da3449 -- infra/modules/platform-addons/charts/platform-config`; `git diff 24a1eb1 7da3449 -- charts/notes-api/values.yaml` |
+| Security (CI) | Expressions interpolated into a shell script (P-008 #2) | transcript |
+| Security (image) | pip left in the runtime image with 4 fixable HIGH CVEs (P-001 #2) | transcript |
+| Vacuous test | Drain check passed while disrupting nothing (P-006 #3) | P-006 |
+| Hardcoded values / `latest` tags | None found. Image, chart and provider versions are pinned, and the tag is a git SHA plus digest. | `grep -rni latest` finds only PSA `enforce-version` labels and the validation messages that reject `latest` |
+| Provider config in modules / cross-stack cycles | None found. Modules declare only `required_providers`, and stacks read each other through `terraform_remote_state`. | tflint |
+| Missing probes / limits | None. The chart schema rejects a deployment without them (P-004 tests). | `tests/chart` |
+
+### A. Calico install (transcript → `9f138df`)
+
+```diff
++data "helm_template" "calico_crds" {
++  chart   = "crd.projectcalico.org.v1"
++  version = var.chart_versions.calico
++  ...
++}
++resource "kubernetes_manifest" "calico_crds" {
++  for_each = local.calico_crds   # 32 CRDs, one resource each
++  manifest = each.value
++}
+ resource "helm_release" "calico" {
+   chart = "tigera-operator"
+   values = [yamlencode({
++    manageCRDs = false
+     installation = { ... }
+   })]
++  depends_on = [kubernetes_manifest.calico_crds]
+ }
+```
+
+The raw version was a single `helm_release`, which is the right pattern for every Calico release before v3.33. The first apply failed with `no matches for kind "Installation"`. The second attempt, a CRD `helm_release`, failed because the release was over 1 MiB.
+
+### B. Destroy order (`9f138df` → `7da3449`)
+
+```diff
+ resource "kubernetes_namespace_v1" "this" {
+   for_each = local.namespaces
+   ...
++  # Destroy order: every namespace, and therefore every pod in it, must be gone before Calico
++  # is uninstalled. Otherwise the kubelet cannot tear down pod networking ...
++  depends_on = [helm_release.calico]
+ }
+```
+
+The raw code had no dependency. Terraform was then free to uninstall Calico before deleting the namespaces, and Envoy pods hung in `Terminating`. It passed `task down` in Phase 8 by timing luck, and failed on the second run from zero in Phase 9.
+
+### C. Metrics route label (transcript → `3e416f8`)
+
+```diff
+     async def dispatch(self, request, call_next):
+-        handler = route_template(request)          # re-matches routes before routing
+         ...
+         finally:
++            handler = route_template(request)      # scope["route"], set by the router
+```
+
+### D. Error-ratio recording rule (transcript → `a6deff7`)
+
+```diff
+       - record: notes_api:slo_errors:ratio_rate5m
+         expr: |
+-          sum(rate(http_requests_total{...,status=~"5.."}[5m]))
++          (sum(rate(http_requests_total{...,status=~"5.."}[5m])) or vector(0))
+           /
+           sum(rate(http_requests_total{...}[5m]))
+```
+
+promtool accepted both versions. Only evaluating every dashboard query against the live Prometheus showed that a healthy service had "No data" on its error panel.
+
+### E. Reproducible image build (`3e416f8` → `ed00fd8`)
+
+```diff
+-        --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
++        --provenance=false
++        --build-arg SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
++        --build-arg BUILD_DATE="$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)"
+```
 
 ## 6. Edge cases, security and compliance
 
-- **CRD ordering:** _how the generated code handled CRDs vs CRs, and what I fixed._
-- **Destroy order:** _orphaned PVCs / load balancers; what protects against them._
-- **Secrets in state:** _did the AI introduce `random_password` or literal secrets? Outcome._
-- **IAM scope:** _wildcards found and narrowed._
-- **Exposure:** _anything public besides the gateway?_
-- **Encryption at rest:** _EBS, S3, KMS for EKS secrets._
-- **NetworkPolicies:** _tested, not assumed (Phase 9 check #3)._
+- **CRD ordering.** Two patterns, both written into `CLAUDE.md`:
+  - CRDs may be `kubernetes_manifest`.
+  - A custom resource whose CRD is installed in the same stack goes into the local `platform-config` Helm chart, because `kubernetes_manifest` validates at plan time before the CRD exists.
+
+  The AI's design followed this from the start. The failure came from Calico changing where its CRDs live (diff A), not from the pattern.
+- **Readiness of custom resources.** Helm reported the CNPG release done in 1 s, but PostgreSQL took 34 s to become ready. A read-only `kubectl wait` gate (`database_ready`) stops the API's migration hook from racing the database.
+- **Destroy order.** Every pod-running namespace `depends_on` the CNI (diff B). Every phase that applies also tests `task down` followed by `cluster:check-clean`. That check lists leftover containers, networks, kube contexts and generated files, and caught the leftover `.generated/` directory in P-002. Local-path PVCs go with the cluster. Orphaned AWS load balancers and EBS volumes are a Phase 14 concern, and the runbook has the verification commands.
+- **Secrets in state.** The AI introduced no `random_password` and no literal secrets:
+  - CNPG generates the database credentials, which the chart references through `existingSecret`.
+  - Grafana generates its own admin password, which Helm reuses with `lookup`.
+  - `apps:check` asserts that **no password appears in the Terraform state**.
+  - gitleaks runs on every commit.
+- **IAM scope.** Not applicable yet: no AWS IAM exists until Phase 13. CI uses the read-only `GITHUB_TOKEN` everywhere. Only the release job gets `packages: write`, plus `id-token: write` for keyless attestation. No static cloud keys exist, and AWS access is planned via GitHub OIDC.
+- **Exposure.** Only the Envoy gateway Service is non-ClusterIP. Phase 9 check 2 proves the database has no route or node port and that a host connection fails.
+- **NetworkPolicies.** Tested, not assumed. Phase 9 check 3 shows an unlabelled pod in `notes` and a pod in `default` resolve DNS but **time out** on 5432, while the API connects.
+- **Pod Security.** `notes` enforces `restricted`. The chart was dry-run server-side in a restricted namespace with no warnings. Only `tigera-operator` and `monitoring` (node-exporter) are `privileged`, documented in `architecture.md` §3.3.
+- **Encryption at rest.** EBS, S3 and KMS for EKS secrets are Phase 13 and not built yet. Locally, data lives on the kind node's disk.
+- **Supply chain.** Actions are pinned to commit SHAs. CLI tools are checksum-verified. Images are pinned by digest. Releases carry an SBOM and SLSA provenance. Dependabot proposes updates weekly.
+- **Session guardrails.** No AWS credentials existed in the session. Every `apply`, `destroy`, `task up/down` and `git push` in this project was approved by the human through the `ask` rules.
 
 ## 7. Performance, cost and idiomatic use
 
-- **Infracost:** dev ≈ _$/month_, prod ≈ _$/month_ (date, assumptions).
-- **Sizing:** node sizes vs pod requests; HPA thresholds.
-- **Idiomatic use:** official `terraform-aws-modules`, `for_each` over `count`, pinned versions, small composable modules, `values.schema.json`.
+- **Infracost:** **not run**, because there are no AWS stacks yet (Phase 13). The local environment costs nothing beyond the laptop. This section gets dev/prod monthly estimates when the EKS stacks exist.
+- **Sizing (local):**
+  - The API requests 50m CPU / 96Mi memory, with a 256Mi memory limit and no CPU limit to avoid throttling.
+  - HPA is 2–4 replicas at 70% CPU.
+  - Under k6 (224,244 requests, 0% failed, p95 56 ms) it scaled 2 → 3 and back.
+  - The observability load test reached 596 req/s.
+  - Chart defaults for other environments are 100m/128Mi, 2–5 replicas.
+- **Idiomatic use:**
+  - Small modules with no provider configuration, and `for_each` over `count` for keyed resources. `count` is only used for on/off toggles.
+  - Every variable is typed and described, with validation where constrained.
+  - `values.schema.json` on every chart, with no defaults for image or Secret so a missing value fails.
+  - Exact pins for Terraform, providers, charts, images and tools, plus multi-platform lock files.
+  - Official charts only, with no Bitnami and no deprecated components (Promtail, ingress-nginx).
+  - For AWS, the plan uses `terraform-aws-modules` rather than hand-rolled VPC and EKS resources.
 
 ## 8. Lessons learned
 
-At least 2–3 honest stories where the AI got something wrong, how it was caught, and what changed in the process (e.g. a new rule in `CLAUDE.md`).
+1. **The model's knowledge of a chart was correct for the past, not for the pinned version.** It wrote the Calico install that has worked for years, but v3.33 had moved the CRDs out of the operator chart. The apply failed; nothing hid it. The fix needed the Calico docs for that exact version, which also explained the 1 MiB problem.
+   *Process change:* the `CLAUDE.md` rule "verify against the pinned version's docs" became a step before writing code. P-002 onward has a "verified before writing code" table, built from `helm show values`, the provider docs (Terraform MCP) and the live cluster.
+2. **Everything passed `apply`; the bug was in `destroy`.** The missing CNI dependency made `task down` hang, but only on the second run from zero. In Phase 8 it had passed by timing luck. No static tool can catch an undeclared ordering between two valid resources.
+   *Process change:* the "Destroy order" rule in `CLAUDE.md`, and `task down` + `task up` from zero as part of done.
+3. **Tests generated with the code can pass for the wrong reason.** Three examples:
+   - The drain check passed while draining a node with no API pods on it.
+   - The Compose smoke test silently rebuilt a different image and tested that one.
+   - The error-ratio rule passed promtool but returned "No data" for a healthy service.
 
-1. _…_
-2. _…_
-3. _…_
+   All three were caught by asking "what would this look like if it were broken?", not by the tests themselves.
+   *Process change:* the "Tests must not pass vacuously" and "Metrics" rules in `CLAUDE.md`. Checks now prove they disrupted something, every dashboard query is evaluated live, and promtool tests pin the zero/empty edge cases.
+
+**One that is still open:** 8 of 55 requests failed during one drain run and could not be reproduced (P-006 #4). Retries and a longer `preStop` mitigate the most plausible cause, but the root cause is not proven. It is recorded as mitigated, not fixed.
+
+**What worked:** short phase prompts were enough because the context lived in the repo (`CLAUDE.md`, ADRs, the plan). The verification loop found most problems before human review. The `ask` guardrails meant every state-changing command had a human decision behind it.

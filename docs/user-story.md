@@ -196,13 +196,13 @@ Bonus priority follows the plan: Observability → CI/CD → AWS IaC → GitOps 
 
 **As a** reviewer, **I want** to see how AI was used to produce infrastructure code and how its output was validated, **so that** I can judge the quality and safety of the process.
 
-**Acceptance criteria**
+**Acceptance criteria** — mostly met in Phase 15. The AWS parts (EKS module, IAM, Infracost) wait for Phase 13.
 
-- [ ] [`genai.md`](genai.md) documents the tool, setup, guardrails and permissions.
-- [ ] It includes the prompts, excerpts of raw output, validation results and before/after corrections.
-- [ ] Raw AI output and human corrections are in **separate commits**, linked from the log.
-- [ ] It covers edge cases, security/compliance, cost/performance and idiomatic use.
-- [ ] It includes at least 2–3 honest "the AI got this wrong" lessons.
+- [x] [`genai.md`](genai.md) documents the tool, setup, guardrails and permissions.
+- [x] It includes the prompts, excerpts of raw output, validation results and before/after corrections.
+- [ ] Raw AI output and human corrections are in **separate commits**, linked from the log. *Not met for Phases 4–11, which were committed one commit per phase. The before/after diffs come from the session transcript and cross-phase history instead ([genai.md §5](genai.md#5-corrections-summary)). The rule applies again from Phase 16.*
+- [x] It covers edge cases, security/compliance, cost/performance and idiomatic use. *Infracost is pending, because there are no AWS stacks yet.*
+- [x] It includes at least 2–3 honest "the AI got this wrong" lessons.
 
 ---
 
