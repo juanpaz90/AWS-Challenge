@@ -80,15 +80,15 @@ Bonus priority follows the plan: Observability → CI/CD → AWS IaC → GitOps 
 
 **As a** platform engineer, **I want** networking, TLS, ingress, metrics and the database operator installed by Terraform from official Helm charts, **so that** applications have a consistent platform to run on.
 
-**Acceptance criteria**
+**Acceptance criteria** — ✅ met in Phase 6 (`task platform:check`, re-plan shows no changes)
 
-- [ ] Calico, cert-manager, Envoy Gateway, metrics-server and the CloudNativePG operator are installed in order with explicit dependencies.
-- [ ] All nodes are `Ready` after Calico is installed.
-- [ ] A self-signed `ClusterIssuer` issues certificates for `*.localtest.me`.
-- [ ] A shared `Gateway` listens on 80/443 and is reachable from the host.
-- [ ] Every platform namespace has Pod Security Admission labels; any exception is documented.
-- [ ] Every chart version is pinned and its project status (active, deprecated, retired) was verified before pinning.
-- [ ] A re-apply shows no changes.
+- [x] Calico, cert-manager, Envoy Gateway, metrics-server and the CloudNativePG operator are installed in order with explicit dependencies.
+- [x] All nodes are `Ready` after Calico is installed.
+- [x] A self-signed `ClusterIssuer` issues certificates for `*.localtest.me`.
+- [x] A shared `Gateway` listens on 80/443 and is reachable from the host.
+- [x] Every platform namespace has Pod Security Admission labels; any exception is documented.
+- [x] Every chart version is pinned and its project status (active, deprecated, retired) was verified before pinning.
+- [x] A re-apply shows no changes.
 
 ---
 

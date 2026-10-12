@@ -34,6 +34,7 @@ Do **not** introduce: ingress-nginx (retired), Bitnami charts/images, Promtail (
   - Stacks exchange data via outputs and `terraform_remote_state`.
   - Tags/labels come from a shared `tags` / `labels` variable.
 - **Versions:** pin Terraform, providers, charts and images exactly. **Never `latest`.** If unsure a version or argument exists, say so — do not guess. Verify against the pinned version's docs: use the `terraform` MCP server (`.mcp.json`) for provider and module docs, and `helm show values <chart> --version <v>` for charts.
+- **Custom resources:** a CR whose CRD is installed in the *same* stack goes into a local Helm chart (see `platform-addons/charts/platform-config`), never `kubernetes_manifest`, which fails at plan time before the CRD exists. CRDs themselves may use `kubernetes_manifest`.
 - **Helm:** `values.schema.json` for every chart; per-environment values files; secrets referenced by name (`existingSecret`), never templated.
 - **Images:** built by `task build` / CI, tagged `<git-sha>`. Terraform never builds images.
 - **Naming:** lowercase, hyphenated; Kubernetes recommended labels (`app.kubernetes.io/*`).

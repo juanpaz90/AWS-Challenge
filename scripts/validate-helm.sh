@@ -2,17 +2,17 @@
 # Lint every chart in charts/ and validate the rendered manifests with kubeconform,
 # once per values file (values.yaml plus values-<env>.yaml overlays).
 #
-# KUBERNETES_VERSION pins the schema version (set it to the EKS minor, e.g. 1.34.0).
+# KUBERNETES_VERSION pins the schema version to the cluster/EKS minor (ADR-0001).
 set -euo pipefail
 
-KUBERNETES_VERSION="${KUBERNETES_VERSION:-master}"
+KUBERNETES_VERSION="${KUBERNETES_VERSION:-1.35.0}"
 # Community CRD schemas (HTTPRoute, ServiceMonitor, CNPG Cluster, ...)
 CRD_SCHEMAS='https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
 
 shopt -s nullglob
-charts=(charts/*/Chart.yaml)
+charts=(charts/*/Chart.yaml infra/modules/*/charts/*/Chart.yaml)
 if [[ ${#charts[@]} -eq 0 ]]; then
-  echo "No charts found under charts/ — nothing to validate."
+  echo "No charts found — nothing to validate."
   exit 0
 fi
 

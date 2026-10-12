@@ -199,6 +199,63 @@ The short prompt worked because `CLAUDE.md`, the plan and the ADRs supplied the 
 
 ---
 
+### P-003 — `platform-addons` module and `local/20-platform` stack (Phase 6)
+
+- **Date:** 2026-10-11
+- **Phase / story:** Phase 6 / S3
+- **Goal:** Calico, cert-manager (+ local CA), Envoy Gateway (+ Gateway via NodePort), metrics-server, CloudNativePG, kube-prometheus-stack, Loki, Alloy — all from Terraform, in order, with Grafana reachable through the gateway.
+- **Mode:** research → generate → validate offline → plan → apply (**failed twice**) → fix → apply → test → re-plan
+
+**Prompt**
+
+> lets og with Phase 6: Stack local/20-platform
+
+**Commits**
+
+- Raw AI output: _fill in_
+- Human corrections: _fill in_
+
+**Verified against the pinned versions before writing code**
+
+| Question | Finding | Effect on the code |
+|---|---|---|
+| Chart status | All 8 charts current, none deprecated; Grafana chart now lives in `grafana-community` (pulled in by kube-prometheus-stack) | Versions pinned in `terraform.tfvars` |
+| CRs vs CRDs in one stack | `kubernetes_manifest` validates at plan time, before the CRDs exist | Issuers, `EnvoyProxy`, `GatewayClass`, `Gateway`, routes in a local `platform-config` chart; content hash passed as a value so template edits trigger upgrades |
+| Envoy Service on kind | Default `externalTrafficPolicy: Local` only answers on nodes with an Envoy pod; kind maps host ports to the control-plane node | `EnvoyProxy` sets `NodePort` + `Cluster` and patches nodePorts 30080/30443 (fields verified in the v1.9.2 CRD schema) |
+| Grafana password | Chart generates it and reuses it via `lookup` | No password in values or state; re-plan stays clean |
+| Loki default mode | `SimpleScalable` | `deploymentMode: SingleBinary`, scalable targets/caches/gateway disabled |
+| Helm provider 3.x | `kubernetes = { ... }` attribute, `set = [...]` list | Provider config written in 3.x syntax |
+
+**Validation results**
+
+| Tool | Result | Findings |
+|---|---|---|
+| terraform validate / tflint / trivy | ✅ | none |
+| helm lint + kubeconform (CRD schemas) on `platform-config` | ✅ | 10/10 valid |
+| apply #1 | ❌ | Calico `Installation` CRD missing (correction 1) |
+| apply #2 | ❌ | Helm release Secret > 1 MiB (correction 2) |
+| apply #3 + `platform:check` (11 checks) | ✅ | nodes Ready, TLS verified against the local CA, Grafana 200, logs in Loki |
+| re-plan (`-detailed-exitcode`) | ✅ | exit 0, no changes |
+| pre-commit | ✅ after fix | correction 3 |
+
+**Corrections and why**
+
+| # | What the AI produced | What changed | Why |
+|---|---|---|---|
+| 1 | Single `tigera-operator` release with an `installation` block | Separate CRD install first, `manageCRDs=false` | Since v3.33 the chart ships **no CRDs** (the operator creates them at runtime), so Helm could not apply the `Installation` it renders. The model assumed the long-standing chart layout; the pinned chart had changed. |
+| 2 | CRDs as a second `helm_release` (`crd.projectcalico.org.v1`) | `helm_template` data source + one `kubernetes_manifest` per CRD (32) | The rendered CRDs exceed the **1 MiB limit** of the Secret Helm stores each release in, which is exactly why Calico documents `helm template \| kubectl apply --server-side`. Also chose the `v1` CRD chart over `v3`, whose `MutatingAdmissionPolicy` objects Kubernetes 1.35 does not serve by default. |
+| 3 | YAML linters excluded Helm templates only under `charts/` | Exclusion widened to module charts | Go templates are not valid YAML until rendered. |
+
+Both failed applies stopped before creating anything (only the namespaces existed), which was confirmed before retrying.
+
+**Assumptions / uncertainties**
+
+- The Helm provider does not surface Kubernetes admission warnings, so "no PSA warnings" is not proven by the apply output; enforcement is proven by the namespaces' labels and pods running.
+- `20-platform` destroy has not been exercised separately yet; Phase 9 runs the full `task down && task up`.
+- kube-prometheus-stack CRDs are installed from the chart's `crds/` directory, which Helm never upgrades; a chart bump may need a CRD upgrade step.
+
+---
+
 ## 4. Validation summary
 
 | Slice | validate | tflint | checkov/trivy | helm lint | kubeconform | Applied | Tests |

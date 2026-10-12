@@ -29,7 +29,7 @@ repos:
       - id: check-json
       - id: check-yaml
         args: [--allow-multiple-documents]
-        exclude: ^charts/.*/templates/ # Go templates are not valid YAML until rendered
+        exclude: ^(charts|infra/modules/.*/charts)/.*/templates/ # Go templates are not valid YAML until rendered
       - id: detect-private-key
       - id: detect-aws-credentials
         args: [--allow-missing-credentials]
@@ -88,7 +88,7 @@ repos:
         name: helm lint + kubeconform
         entry: scripts/validate-helm.sh
         language: script
-        files: ^charts/
+        files: ^(charts/|infra/modules/.*/charts/)
         pass_filenames: false
 
   # --- Commit messages -------------------------------------------------------

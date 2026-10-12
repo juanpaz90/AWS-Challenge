@@ -47,6 +47,12 @@ NetworkPolicies in `notes`:
 - One more component to install and pin; nodes are not Ready until it is installed.
 - CNI differs between local (Calico) and AWS (VPC CNI). Behaviour is equivalent only for standard NetworkPolicy features, so we stay within them.
 
+**Implementation notes (Phase 6)**
+
+- Since Calico v3.33 the `tigera-operator` chart ships no CRDs. The classic `crd.projectcalico.org.v1` CRD chart is rendered with `helm_template` and applied per CRD with `kubernetes_manifest` (as a Helm release it exceeds the 1 MiB release Secret limit); the operator runs with `manageCRDs=false`.
+- The newer `projectcalico.org.v3` CRD chart was not used: it always renders `MutatingAdmissionPolicy` objects, which Kubernetes 1.35 does not serve by default.
+- The pool uses VXLAN with BGP disabled, on the pod CIDR exported by `10-cluster`.
+
 **Follow-ups**
 
 - Add a negative test (throwaway pod cannot reach 5432) and a positive test (API can) to `task test`.

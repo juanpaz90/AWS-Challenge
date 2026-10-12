@@ -111,11 +111,13 @@ flowchart LR
 | Namespace | Contents | PSA level |
 |---|---|---|
 | `notes` | Notes API, migration Job, CNPG `Cluster` | `restricted` |
-| `gateway` | Envoy Gateway controller + proxies | `restricted` (verify) / `baseline` |
+| `gateway` | Envoy Gateway controller + proxies | `restricted` (verified in Phase 6) |
 | `cert-manager` | cert-manager | `restricted` |
 | `cnpg-system` | CNPG operator | `restricted` |
-| `monitoring` | Prometheus stack, Loki, Alloy | `privileged` — **documented exception** (node-exporter and Alloy need host access) |
-| `calico-system`, `tigera-operator` | Calico | `privileged` — **documented exception** (CNI needs host networking) |
+| `monitoring` | Prometheus stack, Loki, Alloy | `privileged` — **documented exception**: node-exporter needs hostNetwork/hostPID/hostPath. Alloy tails logs through the API server and needs no host access. |
+| `tigera-operator` (+ `calico-system`, managed by the operator) | Calico | `privileged` — **documented exception** (CNI needs host networking) |
+
+All Terraform-created namespaces also set `warn` and `audit` to `restricted`, so any gap stays visible.
 
 ### 3.4 Workload hardening (Notes API)
 

@@ -1,0 +1,12 @@
+{{- if .Values.localRegistry.host }}
+# Documents the local registry for tooling (KEP-1755), as in kind's local-registry guide.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: local-registry-hosting
+  namespace: kube-public
+data:
+  localRegistryHosting.v1: |
+    host: {{ .Values.localRegistry.host | quote }}
+    help: "https://kind.sigs.k8s.io/docs/user/local-registry/"
+{{- end }}

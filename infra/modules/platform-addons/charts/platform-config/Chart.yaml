@@ -1,0 +1,5 @@
+apiVersion: v2
+name: platform-config
+description: Platform custom resources (issuers, shared Gateway, routes) installed after their operators
+type: application
+version: 0.1.0

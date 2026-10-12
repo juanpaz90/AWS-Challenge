@@ -1,0 +1,25 @@
+# Set by the platform-addons Terraform module; defaults here only make `helm lint` work.
+checksum: ""
+domain: localtest.me
+
+certManager:
+  namespace: cert-manager
+
+gateway:
+  name: platform
+  gatewayClassName: envoy
+  serviceType: NodePort
+  externalTrafficPolicy: Cluster
+  nodePorts:
+    http: 30080
+    https: 30443
+  accessLabel: platform.notes/gateway-access
+
+grafana:
+  enabled: false
+  namespace: monitoring
+  host: grafana.localtest.me
+  serviceName: kube-prometheus-stack-grafana
+
+localRegistry:
+  host: null

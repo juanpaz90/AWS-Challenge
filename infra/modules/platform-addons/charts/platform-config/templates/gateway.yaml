@@ -1,0 +1,106 @@
+{{- $gw := .Values.gateway }}
+# Wildcard certificate for every *.<domain> host served by the shared Gateway.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $gw.name }}-tls
+  namespace: {{ .Release.Namespace }}
+spec:
+  secretName: {{ $gw.name }}-tls
+  dnsNames:
+    - {{ .Values.domain | quote }}
+    - {{ printf "*.%s" .Values.domain | quote }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: local-ca
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+# How Envoy Gateway exposes the proxy. On kind: NodePorts that match the host port mappings,
+# with externalTrafficPolicy Cluster so the control-plane node (where the mappings land)
+# forwards traffic even though no Envoy pod runs there.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: {{ $gw.name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        type: {{ $gw.serviceType }}
+        externalTrafficPolicy: {{ $gw.externalTrafficPolicy }}
+        {{- if eq $gw.serviceType "NodePort" }}
+        patch:
+          type: StrategicMerge
+          value:
+            spec:
+              ports:
+                - port: 80
+                  nodePort: {{ $gw.nodePorts.http }}
+                - port: 443
+                  nodePort: {{ $gw.nodePorts.https }}
+        {{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: {{ $gw.gatewayClassName }}
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: {{ $gw.name }}
+    namespace: {{ .Release.Namespace }}
+---
+# The single public entry point. Only namespaces labelled <accessLabel>=true may attach routes.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ $gw.name }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  gatewayClassName: {{ $gw.gatewayClassName }}
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: {{ printf "*.%s" .Values.domain | quote }}
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: {{ $gw.name }}-tls
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              {{ $gw.accessLabel }}: "true"
+---
+# Plain HTTP only redirects to HTTPS.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: https-redirect
+  namespace: {{ .Release.Namespace }}
+spec:
+  parentRefs:
+    - name: {{ $gw.name }}
+      sectionName: http
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301

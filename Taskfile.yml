@@ -17,6 +17,7 @@ vars:
   DOCKER_HOST:
     sh: echo "${DOCKER_HOST:-$(docker context inspect | jq -r '.[0].Endpoints.docker.Host')}"
   CLUSTER_STACK: infra/environments/local/10-cluster
+  PLATFORM_STACK: infra/environments/local/20-platform
 
 tasks:
   default:
@@ -119,6 +120,25 @@ tasks:
     desc: Verify nothing from 10-cluster is left after cluster:down
     cmds:
       - tests/infra/10-cluster.sh down
+
+  platform:up:
+    desc: Install the platform add-ons (local/20-platform). Extra args go to terraform apply
+    dir: "{{.PLATFORM_STACK}}"
+    cmds:
+      - terraform init -input=false
+      - terraform apply {{.CLI_ARGS}}
+
+  platform:down:
+    desc: Uninstall the platform add-ons (local/20-platform). Extra args go to terraform destroy
+    dir: "{{.PLATFORM_STACK}}"
+    cmds:
+      - terraform init -input=false
+      - terraform destroy {{.CLI_ARGS}}
+
+  platform:check:
+    desc: Verify the platform (nodes Ready, releases, TLS, gateway, Grafana, logs)
+    cmds:
+      - tests/infra/20-platform.sh
 
   up:
     desc: Create the local environment — 10-cluster → 20-platform → 30-apps (Phase 5–8)
