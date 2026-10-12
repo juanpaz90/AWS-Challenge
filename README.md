@@ -1,5 +1,7 @@
 # AWS DevOps Challenge — Notes API on Kubernetes
 
+[![CI](https://github.com/juanpaz90/AWS-Challenge/actions/workflows/ci.yml/badge.svg)](https://github.com/juanpaz90/AWS-Challenge/actions/workflows/ci.yml)
+
 Deploy a sample API (multiple replicas) and its PostgreSQL database with persistent storage on Kubernetes, fully defined as code with Terraform and Helm. The API is reachable from outside; the database is not.
 
 **Local-first, cloud-ready:** everything runs on a Terraform-managed `kind` cluster, and the same charts and platform layer are reused on AWS EKS.
@@ -44,6 +46,20 @@ Full diagrams in [docs/architecture.md](docs/architecture.md).
 | [CLAUDE.md](CLAUDE.md) | Rules for the AI assistant |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Workflow, Conventional Commits, hooks |
 
+## CI/CD
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request and every push to `main` (docs-only changes are skipped):
+
+| Job | What it runs |
+|---|---|
+| `lint` | `pre-commit run --all-files` — Terraform fmt/validate/tflint/trivy/docs, hadolint, yamllint, actionlint, helm lint + kubeconform, chart tests, helm-docs, promtool rule tests, ruff, gitleaks |
+| `app` | `pytest` (unit + Alembic migration tests) |
+| `image` | `task scan` — reproducible build, hadolint, `trivy image` (fails on fixable HIGH/CRITICAL) |
+| `e2e` | ephemeral kind cluster on the runner: `task up` → `task test` → `task obs:check` → `task down` (diagnostics uploaded on failure) |
+| `release` | `main` only, after `e2e`: push `ghcr.io/<owner>/notes-api:<sha>` with SBOM + SLSA provenance (signed attestation when the repo is public) |
+
+CI uses the same pinned tool versions as below ([`setup-toolchain`](.github/actions/setup-toolchain/action.yml), checksum-verified downloads), actions are pinned to commit SHAs, and the token is read-only outside `release`. Dependabot keeps actions, base images, Python dependencies and Terraform providers current. AWS access (Phase 13) will use GitHub OIDC — no static keys.
+
 ## Prerequisites
 
 | Tool | Version | Used for |
@@ -62,7 +78,10 @@ Full diagrams in [docs/architecture.md](docs/architecture.md).
 | kubectl | 1.35.9 | must stay within one minor of the cluster (1.35) |
 | kind (CLI, optional) | 0.33.0 | inspection only — clusters are created by Terraform (embedded kind v0.31.0) |
 | terraform-docs | 0.24.0 | module READMEs |
-| helm-docs · checkov · k6 · infracost | _tbd_ | later phases |
+| helm-docs | 1.14.2 | chart README |
+| k6 | 2.3.0 | load tests (HPA demo) |
+| actionlint · shellcheck | 1.7.12 · 0.11.0 | GitHub Actions linting |
+| checkov · infracost | _tbd_ | later phases |
 
 yamllint, gitleaks and the Conventional Commits checker are installed automatically by pre-commit.
 

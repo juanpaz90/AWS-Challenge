@@ -13,7 +13,11 @@ Required tools are listed in the [README](README.md#prerequisites).
 
 - Commit directly to `main` in small, self-contained commits. `main` must always stay deployable: run `task lint` (the hooks do this on every commit) before pushing.
 - For larger or riskier changes, use an optional **short-lived branch** (`<type>/<short-description>`, e.g. `feat/kind-cluster-module`) and merge it back quickly.
-- Once CI exists (Phase 11), its checks run on every push to `main`; fix a red build before anything else.
+- CI runs on every push to `main` (see below); fix a red build before anything else.
+
+## CI
+
+Every push to `main` and every pull request runs [`ci.yml`](.github/workflows/ci.yml): the pre-commit hooks, app tests, an image scan, and an end-to-end run on an ephemeral kind cluster; `main` then publishes the image to GHCR. If CI is red, fixing it comes first. Run `task lint` (and `task up && task test` for infrastructure changes) before pushing to avoid spending an hour of runner time on a failure you could have seen locally.
 
 ## Commit messages — Conventional Commits
 

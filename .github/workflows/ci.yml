@@ -1,0 +1,226 @@
+# CI/CD for the Notes API platform (Phase 11, story S8).
+#
+#   lint ──┐
+#   app  ──┼──► e2e (ephemeral kind: task up → task test → task down) ──► release (main only)
+#   image ─┘
+#
+# Every job runs the same commands as local development (pre-commit hooks, task targets), so
+# "green in CI" and "green on a laptop" mean the same thing. Third-party actions are pinned to
+# full commit SHAs; the workflow token is read-only except in the release job.
+name: CI
+
+on:
+  pull_request:
+    paths-ignore: ["**.md", "docs/**"]
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**"] # docs-only changes do not need ~1 h of runner time
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  FORCE_COLOR: "1"
+  TF_IN_AUTOMATION: "1"
+
+jobs:
+  lint:
+    name: Lint, validate and scan (pre-commit)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-toolchain
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Install pre-commit
+        run: uv tool install pre-commit==4.6.2
+
+      # terraform fmt/validate/tflint/trivy/docs, hadolint, yamllint, helm lint + kubeconform,
+      # chart tests, helm-docs, promtool rule tests, ruff, gitleaks, conventional commits config.
+      - name: Run every pre-commit hook on the whole repository
+        run: pre-commit run --all-files --show-diff-on-failure
+
+  app:
+    name: App unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: 0.12.24
+          enable-cache: true
+          cache-dependency-glob: app/uv.lock
+
+      - name: pytest (unit + Alembic migration tests)
+        working-directory: app
+        run: |
+          uv sync --frozen
+          uv run pytest
+
+  image:
+    name: Build and scan image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-toolchain
+
+      # Reproducible build (commit timestamps), hadolint, then trivy image: fails on any
+      # fixable HIGH/CRITICAL vulnerability.
+      - name: task scan
+        run: task scan
+
+  e2e:
+    name: End-to-end on an ephemeral kind cluster
+    needs: [lint, app, image]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-toolchain
+        with:
+          e2e: "true"
+
+      - name: task up (10-cluster → 20-platform → 30-apps)
+        run: task up -- -auto-approve -no-color
+
+      - name: task test (Phase 9 validation suite)
+        run: task test
+
+      - name: task obs:check (rules, dashboard, logs, alert fire drill)
+        run: task obs:check
+
+      - name: Collect diagnostics
+        if: failure()
+        run: |
+          mkdir -p diagnostics
+          k() { kubectl --context kind-notes-local "$@"; }
+          k get nodes -o wide >diagnostics/nodes.txt 2>&1 || true
+          k get pods -A -o wide >diagnostics/pods.txt 2>&1 || true
+          k get events -A --sort-by=.lastTimestamp >diagnostics/events.txt 2>&1 || true
+          helm --kube-context kind-notes-local list -A >diagnostics/helm.txt 2>&1 || true
+          k -n notes describe pods >diagnostics/notes-pods.txt 2>&1 || true
+          k -n notes logs deploy/notes-api --all-containers --tail=500 >diagnostics/notes-api.log 2>&1 || true
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-diagnostics
+          path: diagnostics/
+          retention-days: 7
+
+      - name: task down
+        if: always()
+        run: task down -- -auto-approve -no-color
+
+  release:
+    name: Publish image (main)
+    needs: [e2e]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write # push to GHCR
+      id-token: write # keyless signing of the provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Image name and build metadata
+        id: meta
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          short="${GITHUB_SHA::7}"
+          {
+            echo "image=ghcr.io/${owner}/notes-api"
+            echo "tag=${short}"
+            echo "epoch=$(git log -1 --format=%ct)"
+            echo "date=$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)"
+          } >>"$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Same Dockerfile and timestamps as the local build, plus SBOM and SLSA provenance
+      # attestations (kept out of local builds so their digests stay reproducible).
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: app
+          push: true
+          tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.tag }}
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ steps.meta.outputs.date }}
+            SOURCE_DATE_EPOCH=${{ steps.meta.outputs.epoch }}
+          provenance: mode=max
+          sbom: true
+
+      # Signed artifact attestations need a public repository (or GitHub Enterprise Cloud for
+      # private ones). The SBOM and provenance from the build above are pushed either way.
+      - if: ${{ !github.event.repository.private }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.meta.outputs.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Summary
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          {
+            echo "### Published image"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Image | \`${IMAGE}:${TAG}\` |"
+            echo "| Digest | \`${DIGEST}\` |"
+            echo "| SBOM / provenance | \`docker buildx imagetools inspect ${IMAGE}@${DIGEST} --format '{{ json .Provenance }}'\` |"
+            if [[ "$PRIVATE" == false ]]; then
+              echo "| Verify attestation | \`gh attestation verify oci://${IMAGE}@${DIGEST} -R ${GITHUB_REPOSITORY}\` |"
+            fi
+            echo
+            echo "Promotion to the environments (updating the image reference that Argo CD deploys) is added with GitOps in Phase 12."
+          } >>"$GITHUB_STEP_SUMMARY"
