@@ -18,16 +18,28 @@ fi
 
 for chart_file in "${charts[@]}"; do
   chart="$(dirname "$chart_file")"
-  echo "==> helm lint ${chart}"
-  helm lint --strict "$chart"
+  name="$(basename "$chart")"
 
-  for values in "$chart"/values.yaml "$chart"/values-*.yaml; do
-    [[ -f "$values" ]] || continue
+  # Values Terraform/CI inject at deploy time (image repository, git-SHA tag) come from an
+  # optional ci/validate-values.yaml (chart-testing convention).
+  ci_args=()
+  [[ -f "$chart/ci/validate-values.yaml" ]] && ci_args=(-f "$chart/ci/validate-values.yaml")
+
+  # Validate every environment overlay on top of values.yaml, or values.yaml alone.
+  overlays=("$chart"/values-*.yaml)
+  [[ ${#overlays[@]} -eq 0 ]] && overlays=("")
+
+  for overlay in "${overlays[@]}"; do
     args=(-f "$chart/values.yaml")
-    [[ "$values" != "$chart/values.yaml" ]] && args+=(-f "$values")
+    [[ -n "$overlay" ]] && args+=(-f "$overlay")
+    args+=("${ci_args[@]+"${ci_args[@]}"}")
+    label="${overlay:+${overlay##*/}}"; label="${label:-values.yaml}"
 
-    echo "==> kubeconform ${chart} (${values##*/})"
-    helm template "$(basename "$chart")" "$chart" "${args[@]}" |
+    echo "==> helm lint ${chart} (${label})"
+    helm lint --strict "$chart" "${args[@]}"
+
+    echo "==> kubeconform ${chart} (${label})"
+    helm template "$name" "$chart" "${args[@]}" |
       kubeconform -strict -summary \
         -kubernetes-version "$KUBERNETES_VERSION" \
         -schema-location default \

@@ -104,7 +104,9 @@ flowchart LR
     other[Any other pod] -. denied .-x db
 ```
 
-> Exact ports and pod labels are confirmed against the pinned chart versions when the policies are written (Phase 7) and proven by Phase 9 check #3.
+> Pod labels were taken from the running platform in Phase 7 (Envoy: `app.kubernetes.io/name=envoy,component=proxy`; Prometheus: `app.kubernetes.io/name=prometheus`); isolation is proven by Phase 9 check #3.
+
+**Ownership:** the `notes-api` chart owns the namespace default-deny + DNS policies and the policies that select its own pods (API, migration Job). Policies that select the **database** pods (from the API and migration Job on 5432, operator, replication, monitoring) belong to `30-apps` with the CNPG `Cluster`, because the chart's pre-install migration hook runs before any chart resource exists.
 
 ### 3.3 Namespaces and Pod Security Admission
 

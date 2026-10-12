@@ -90,6 +90,18 @@ repos:
         language: script
         files: ^(charts/|infra/modules/.*/charts/)
         pass_filenames: false
+      - id: notes-api-chart-tests
+        name: notes-api chart tests
+        entry: uv run --no-project --with pytest --with pyyaml pytest tests/chart -q
+        language: system
+        files: ^(charts/notes-api/|tests/chart/)
+        pass_filenames: false
+      - id: helm-docs
+        name: helm-docs (notes-api README)
+        entry: bash -c 'cd charts/notes-api && helm-docs --chart-search-root . --template-files README.md.gotmpl'
+        language: system
+        files: ^charts/notes-api/
+        pass_filenames: false
 
   # --- Commit messages -------------------------------------------------------
   - repo: https://github.com/compilerla/conventional-pre-commit

@@ -1,0 +1,48 @@
+# AWS prod (EKS). Planned, not necessarily applied. image.repository and image.tag are
+# injected by Terraform/CI.
+config:
+  appMessage: "Hello from EKS"
+  logLevel: INFO
+  dbPoolSize: 10
+  dbMaxOverflow: 10
+
+database:
+  existingSecret: notes-db-app
+  podSelector:
+    cnpg.io/cluster: notes-db
+
+httpRoute:
+  enabled: true
+  hostnames:
+    - api.example.com # replaced by the prod domain from Terraform
+  parentRefs:
+    - name: platform
+      namespace: gateway
+      sectionName: https
+
+# Zones are a hard constraint in prod: losing one AZ must never take all replicas.
+topologySpread:
+  - topologyKey: topology.kubernetes.io/zone
+    maxSkew: 1
+    whenUnsatisfiable: DoNotSchedule
+  - topologyKey: kubernetes.io/hostname
+    maxSkew: 1
+    whenUnsatisfiable: ScheduleAnyway
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 65
+  scaleDownStabilizationSeconds: 300
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    memory: 512Mi

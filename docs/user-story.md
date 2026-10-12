@@ -96,15 +96,15 @@ Bonus priority follows the plan: Observability → CI/CD → AWS IaC → GitOps 
 
 **As a** developer, **I want** a production-grade Helm chart for the Notes API, **so that** I can deploy it to any environment by changing values only.
 
-**Acceptance criteria**
+**Acceptance criteria** — ✅ met in the rendered chart in Phase 7 (`task chart:lint`, `task chart:test`, server-side dry run in a `restricted` namespace). Runtime behaviour (replicas, HPA, rollouts, drain) is proven by Phase 9 checks 5–9.
 
-- [ ] The Deployment runs ≥ 2 replicas with requests/limits, liveness/readiness/startup probes and topology spread across nodes.
-- [ ] Pods satisfy Pod Security `restricted` (non-root, read-only root FS, all capabilities dropped, `seccompProfile: RuntimeDefault`).
-- [ ] The chart includes a ClusterIP Service, an optional HTTPRoute, HPA, PDB, ServiceAccount, ServiceMonitor and NetworkPolicies.
-- [ ] Database credentials come from a **reference** to the operator-generated Secret; no secret values appear in values files.
-- [ ] Migrations run as a `pre-install`/`pre-upgrade` hook Job.
-- [ ] `values.schema.json` validates all values; per-environment files exist (`values-local.yaml`, `values-dev.yaml`, `values-prod.yaml`).
-- [ ] `helm lint`, `helm template | kubeconform` and `helm-docs` all pass.
+- [x] The Deployment runs ≥ 2 replicas with requests/limits, liveness/readiness/startup probes and topology spread across nodes.
+- [x] Pods satisfy Pod Security `restricted` (non-root, read-only root FS, all capabilities dropped, `seccompProfile: RuntimeDefault`).
+- [x] The chart includes a ClusterIP Service, an optional HTTPRoute, HPA, PDB, ServiceAccount, ServiceMonitor and NetworkPolicies.
+- [x] Database credentials come from a **reference** to the operator-generated Secret; no secret values appear in values files.
+- [x] Migrations run as a `pre-install`/`pre-upgrade` hook Job.
+- [x] `values.schema.json` validates all values; per-environment files exist (`values-local.yaml`, `values-dev.yaml`, `values-prod.yaml`).
+- [x] `helm lint`, `helm template | kubeconform` and `helm-docs` all pass.
 
 ---
 

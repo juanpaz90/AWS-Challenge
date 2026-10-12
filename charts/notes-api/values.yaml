@@ -1,0 +1,208 @@
+# Default values for notes-api. Environment overlays: values-local.yaml, values-dev.yaml,
+# values-prod.yaml. Every value is validated by values.schema.json.
+
+# -- Pod replicas when the HPA is disabled. With the HPA enabled, the HPA owns the count.
+replicaCount: 2
+
+image:
+  # -- Image repository (local registry, ECR, ...). Required.
+  repository: ""
+  # -- Immutable image tag (git SHA). Required; `latest` is rejected by the schema.
+  tag: ""
+  # -- Optional digest (`sha256:...`); when set it is used instead of the tag.
+  digest: ""
+  # -- Image pull policy.
+  pullPolicy: IfNotPresent
+
+# -- Pull secrets for private registries.
+imagePullSecrets: []
+# -- Override the chart name in resource names.
+nameOverride: ""
+# -- Override the full resource name.
+fullnameOverride: ""
+
+serviceAccount:
+  # -- Create a dedicated ServiceAccount.
+  create: true
+  # -- ServiceAccount name; generated from the release name when empty.
+  name: ""
+  # -- Annotations, e.g. for EKS Pod Identity / IRSA in cloud environments.
+  annotations: {}
+
+# -- Extra pod annotations.
+podAnnotations: {}
+# -- Extra pod labels.
+podLabels: {}
+
+# Non-secret application settings, rendered into a ConfigMap (see app/README.md).
+config:
+  # -- Message returned by `GET /`; change it to demo a rolling update.
+  appMessage: "Hello from the Notes API"
+  # -- Log level.
+  logLevel: INFO
+  # -- Seconds uvicorn waits for in-flight requests after SIGTERM.
+  shutdownTimeoutSeconds: 20
+  # -- SQLAlchemy pool size per pod.
+  dbPoolSize: 5
+  # -- Extra connections above the pool size per pod.
+  dbMaxOverflow: 5
+
+database:
+  # -- Existing Secret with the database credentials. The chart only **references** it; on
+  # CloudNativePG it is the operator-generated `<cluster>-app` Secret.
+  existingSecret: ""
+  # -- Keys inside `existingSecret` (defaults match CloudNativePG).
+  secretKeys:
+    host: host
+    port: port
+    name: dbname
+    user: username
+    password: password
+  # -- Database port, used by the NetworkPolicies.
+  port: 5432
+  # -- Labels selecting the database pods, used by the NetworkPolicies (CloudNativePG: `cnpg.io/cluster`).
+  podSelector: {}
+
+# -- Port the container listens on.
+containerPort: 8000
+
+service:
+  # -- Service type. Only ClusterIP: the API is exposed through the Gateway, never directly.
+  type: ClusterIP
+  # -- Service port.
+  port: 80
+
+httpRoute:
+  # -- Create a Gateway API HTTPRoute.
+  enabled: true
+  # -- Hostnames served by the route.
+  hostnames: []
+  # -- Gateways the route attaches to.
+  parentRefs: []
+
+# -- Container resources. Requests drive scheduling and HPA utilisation; the memory limit
+# protects the node. No CPU limit, to avoid throttling latency spikes.
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 256Mi
+
+probes:
+  # -- Startup probe: gives the app up to failureThreshold × periodSeconds to start.
+  startup:
+    path: /healthz
+    periodSeconds: 2
+    failureThreshold: 30
+  # -- Liveness probe: restarts the container if the process stops serving.
+  liveness:
+    path: /healthz
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+  # -- Readiness probe: removes the pod from the Service while the database is unreachable.
+  readiness:
+    path: /readyz
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 2
+
+# -- Seconds to keep serving after termination starts, so endpoints are removed from load
+# balancers before the process stops accepting connections.
+preStopSleepSeconds: 5
+# -- Must exceed preStopSleepSeconds + config.shutdownTimeoutSeconds.
+terminationGracePeriodSeconds: 30
+
+# -- Pod security context (Pod Security Admission `restricted`).
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+# -- Container security context (Pod Security Admission `restricted`).
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# -- Spread pods across these topology keys (one constraint each). `ScheduleAnyway` keeps
+# pods schedulable while a node is drained; `Honor` ignores nodes the pods cannot run on.
+topologySpread:
+  - topologyKey: kubernetes.io/hostname
+    maxSkew: 1
+    whenUnsatisfiable: ScheduleAnyway
+
+# -- Node selector.
+nodeSelector: {}
+# -- Tolerations.
+tolerations: []
+# -- Affinity rules.
+affinity: {}
+
+autoscaling:
+  # -- Create a HorizontalPodAutoscaler (requires metrics-server).
+  enabled: true
+  # -- Minimum replicas.
+  minReplicas: 2
+  # -- Maximum replicas.
+  maxReplicas: 5
+  # -- Target average CPU utilisation (% of requests).
+  targetCPUUtilizationPercentage: 70
+  # -- Seconds the HPA waits before scaling in (lower = faster demo, higher = less flapping).
+  scaleDownStabilizationSeconds: 120
+
+podDisruptionBudget:
+  # -- Create a PodDisruptionBudget.
+  enabled: true
+  # -- Minimum pods available during voluntary disruptions (node drains, upgrades).
+  minAvailable: 1
+
+serviceMonitor:
+  # -- Create a Prometheus Operator ServiceMonitor.
+  enabled: true
+  # -- Scrape interval.
+  interval: 30s
+  # -- Extra labels on the ServiceMonitor.
+  labels: {}
+
+migration:
+  # -- Run `alembic upgrade head` as a Helm pre-install/pre-upgrade hook Job.
+  enabled: true
+  # -- Seconds before a stuck migration Job is killed.
+  activeDeadlineSeconds: 300
+  # -- Retries before the release fails.
+  backoffLimit: 3
+  # -- Migration Job resources.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      memory: 192Mi
+
+networkPolicy:
+  # -- Create NetworkPolicies (docs/architecture.md §3.2).
+  enabled: true
+  # -- Default-deny ingress and egress for the **whole namespace**, plus DNS egress. Disable if the namespace owner already provides them.
+  namespaceDefaultDeny: true
+  # -- Who may call the API: the Gateway's Envoy proxies.
+  gateway:
+    namespace: gateway
+    podLabels:
+      app.kubernetes.io/name: envoy
+      app.kubernetes.io/component: proxy
+  # -- Who may scrape `/metrics`.
+  monitoring:
+    namespace: monitoring
+    podLabels:
+      app.kubernetes.io/name: prometheus
+  # -- DNS servers (egress allowed on 53/UDP+TCP).
+  dns:
+    namespace: kube-system
+    podLabels:
+      k8s-app: kube-dns

@@ -1,0 +1,15 @@
+apiVersion: v2
+name: notes-api
+description: Notes API (FastAPI + PostgreSQL) — hardened Deployment with probes, HPA, PDB, NetworkPolicies, Gateway API route and Alembic migration hook
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.33.0-0"
+home: https://github.com/juanpaz90/AWS-Challenge
+sources:
+  - https://github.com/juanpaz90/AWS-Challenge/tree/main/app
+keywords:
+  - fastapi
+  - postgresql
+  - cloudnative-pg
+  - gateway-api

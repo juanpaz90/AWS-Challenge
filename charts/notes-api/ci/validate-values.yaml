@@ -1,0 +1,5 @@
+# Offline validation only (scripts/validate-helm.sh): placeholders for values Terraform/CI
+# inject at deploy time. Never used for a real release.
+image:
+  repository: registry.invalid/notes-api
+  tag: "0000000"

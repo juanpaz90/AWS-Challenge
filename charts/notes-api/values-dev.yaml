@@ -1,0 +1,33 @@
+# AWS dev (EKS). image.repository (ECR URL) and image.tag are injected by Terraform/CI;
+# no account ID or region is hardcoded here.
+config:
+  appMessage: "Hello from EKS dev"
+
+database:
+  existingSecret: notes-db-app
+  podSelector:
+    cnpg.io/cluster: notes-db
+
+httpRoute:
+  enabled: true
+  hostnames:
+    - api.dev.example.com # replaced by the dev domain from Terraform
+  parentRefs:
+    - name: platform
+      namespace: gateway
+      sectionName: https
+
+topologySpread:
+  - topologyKey: topology.kubernetes.io/zone
+    maxSkew: 1
+    whenUnsatisfiable: ScheduleAnyway
+  - topologyKey: kubernetes.io/hostname
+    maxSkew: 1
+    whenUnsatisfiable: ScheduleAnyway
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+  scaleDownStabilizationSeconds: 300

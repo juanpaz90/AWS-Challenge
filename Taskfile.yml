@@ -66,6 +66,22 @@ tasks:
       - uv run ruff check .
       - uv run ruff format --check .
 
+  chart:lint:
+    desc: helm lint + kubeconform for every chart and environment overlay
+    cmds:
+      - scripts/validate-helm.sh
+
+  chart:test:
+    desc: Behavioural tests for the notes-api chart (render + assert, incl. rejected values)
+    cmds:
+      - uv run --no-project --with pytest --with pyyaml pytest tests/chart -q
+
+  chart:docs:
+    desc: Regenerate the notes-api chart README from values.yaml (helm-docs)
+    dir: charts/notes-api
+    cmds:
+      - helm-docs --chart-search-root . --template-files README.md.gotmpl
+
   compose:up:
     desc: Start PostgreSQL → migrations → API with Docker Compose on http://127.0.0.1:8080
     dir: app

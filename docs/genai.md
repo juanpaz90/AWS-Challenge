@@ -256,6 +256,58 @@ Both failed applies stopped before creating anything (only the namespaces existe
 
 ---
 
+### P-004 — `charts/notes-api` Helm chart (Phase 7)
+
+- **Date:** 2026-10-11
+- **Phase / story:** Phase 7 / S4
+- **Goal:** production-grade chart: Deployment (probes, security, spread), ClusterIP Service, HTTPRoute, ConfigMap + Secret *reference*, HPA, PDB, ServiceAccount, ServiceMonitor, NetworkPolicies, Alembic hook; per-environment values and a schema.
+- **Mode:** research (live cluster + upstream source) → generate → lint/kubeconform → behavioural tests → server-side dry run
+
+**Prompt**
+
+> lets og with Phase 7: Helm chart charts/notes-api
+
+**Commits**
+
+- Raw AI output: _fill in_
+- Human corrections: _fill in_
+
+**Verified before writing code**
+
+| Question | Source | Finding |
+|---|---|---|
+| Envoy proxy / Prometheus / CoreDNS pod labels for NetworkPolicies | running platform | `app.kubernetes.io/name=envoy` + `component=proxy`; `app.kubernetes.io/name=prometheus`; `k8s-app=kube-dns` |
+| CNPG `<cluster>-app` Secret keys | operator source v1.30.1 (docs only list contents) | `username`, `password`, `dbname`, `host`, `port` |
+| Native `preStop.sleep`, `nodeTaintsPolicy` | `kubectl explain` on 1.35 | both served, so no shell `sleep` in the image is needed |
+
+**Validation results**
+
+| Tool | Result | Findings |
+|---|---|---|
+| helm lint --strict (local/dev/prod) | ✅ | — |
+| kubeconform -strict, K8s 1.35 + CRD schemas | ✅ | 13/13 valid per environment |
+| behavioural tests (`tests/chart`, 25) | ✅ | incl. 11 unsafe value sets that must be rejected |
+| server-side dry run in a PSA `restricted` namespace | ✅ | 13/13 admitted, no PodSecurity warnings |
+| trivy config | ✅ (gate HIGH/CRITICAL) | 2 MEDIUM accepted: KSV-01010 false positive, KSV-0125 local registry |
+| helm-docs | ✅ | README generated from `values.yaml` |
+
+**Corrections and why** (design issues found while generating, before any tool flagged them)
+
+| # | First approach | What changed | Why |
+|---|---|---|---|
+| 1 | Chart creates "allow API → DB" ingress on the database pods | Moved to the database owner (`30-apps`) | The migration Job is a `pre-install` hook, so it runs before any chart resource exists. If the DB's own policies isolated it first, the very first migration would be blocked. |
+| 2 | Migration Job with `envFrom` the chart ConfigMap and the chart ServiceAccount | Inline env, default SA, no token | Neither exists yet when a pre-install hook runs; the first install would fail. A test now guards this. |
+| 3 | `helm lint` on `values.yaml` alone | Lint/render every overlay with `ci/validate-values.yaml` placeholders | The schema deliberately has **no defaults** for image repository/tag and the DB Secret, so the bare defaults (correctly) fail. |
+| 4 | Topology spread on hostname only | `nodeTaintsPolicy: Honor` + `ScheduleAnyway` | Without it the tainted control-plane node counts as a domain, and a hard constraint could block scheduling during the drain test. |
+
+**Assumptions / uncertainties**
+
+- Not deployed yet: replicas, HPA scaling, rollout without downtime and drain behaviour are proven in Phases 8–9.
+- The ServiceMonitor's Prometheus `job` label equals the Service name (`notes-api`), which the SLO queries in `docs/slo.md` assume.
+- Dev/prod hostnames are placeholders replaced by Terraform when the AWS stacks exist (Phase 13).
+
+---
+
 ## 4. Validation summary
 
 | Slice | validate | tflint | checkov/trivy | helm lint | kubeconform | Applied | Tests |

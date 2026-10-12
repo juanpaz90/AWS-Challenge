@@ -1,0 +1,12 @@
+Notes API {{ .Values.image.tag }} deployed as "{{ include "notes-api.fullname" . }}" in namespace {{ .Release.Namespace }}.
+{{- if .Values.httpRoute.enabled }}
+
+Reachable through the Gateway at:
+{{- range .Values.httpRoute.hostnames }}
+  https://{{ . }}/
+{{- end }}
+{{- end }}
+
+Check it:
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "notes-api.fullname" . }}
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}

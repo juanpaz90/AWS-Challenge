@@ -1,0 +1,34 @@
+# kind (local). image.tag is injected by Terraform (30-apps) with the git SHA.
+image:
+  repository: localhost:5001/notes-api
+
+config:
+  appMessage: "Hello from kind"
+
+database:
+  existingSecret: notes-db-app # CloudNativePG cluster "notes-db" → Secret "<cluster>-app"
+  podSelector:
+    cnpg.io/cluster: notes-db
+
+httpRoute:
+  enabled: true
+  hostnames:
+    - api.localtest.me
+  parentRefs:
+    - name: platform
+      namespace: gateway
+      sectionName: https
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 70
+  scaleDownStabilizationSeconds: 60 # fast scale-in for the HPA demo
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 96Mi
+  limits:
+    memory: 256Mi

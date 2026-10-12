@@ -1,0 +1,58 @@
+# {{ template "chart.name" . }}
+
+{{ template "chart.versionBadge" . }}{{ template "chart.appVersionBadge" . }}
+
+{{ template "chart.description" . }}
+
+Story S4. Deployed by Terraform in `infra/environments/<env>/30-apps` (Phase 8), later by Argo CD (Phase 12).
+
+## What it renders
+
+| Resource | Notes |
+|---|---|
+| `Deployment` | Startup/liveness/readiness probes, `preStop` sleep then graceful drain, `maxUnavailable: 0` rollouts, topology spread (`nodeTaintsPolicy: Honor`), Pod Security `restricted`, read-only root FS with an `emptyDir` `/tmp`, config checksum annotation so config changes roll the pods |
+| `Service` | `ClusterIP` only (the schema rejects anything else) |
+| `HTTPRoute` | Attaches to the shared Gateway's HTTPS listener (toggle `httpRoute.enabled`) |
+| `ConfigMap` | Non-secret settings only |
+| — | **No Secret.** Database credentials are referenced from `database.existingSecret` (CloudNativePG's `<cluster>-app`) |
+| `HorizontalPodAutoscaler`, `PodDisruptionBudget` | CPU-based scaling; `unhealthyPodEvictionPolicy: AlwaysAllow` so a broken pod never blocks a drain |
+| `ServiceAccount` | Token not mounted (the API never calls the Kubernetes API) |
+| `ServiceMonitor` | Scrapes `/metrics` every `serviceMonitor.interval` |
+| `NetworkPolicy` ×4 | Namespace default-deny + DNS, API (in: Envoy + Prometheus; out: database), migration Job (out: database) |
+| `Job` (hook) | `alembic upgrade head` as `pre-install,pre-upgrade`, before any new pod starts |
+
+## Ownership boundary for network policies
+
+The chart owns policies that select **its own pods** (plus the namespace baseline). Policies that select the **database pods** — including "allow this release → 5432" — belong to the database owner (`30-apps`), because the pre-install migration hook runs before any resource of this chart exists. The chart's pods carry `app.kubernetes.io/name: notes-api` and `app.kubernetes.io/instance: <release>` for that purpose.
+
+## Usage
+
+```bash
+helm upgrade --install notes-api charts/notes-api --namespace notes \
+  -f charts/notes-api/values-local.yaml \
+  --set image.tag=<git-sha>
+```
+
+`image.tag` (or `image.digest`), `image.repository`, `database.existingSecret` and, with network policies on, `database.podSelector` are required; `values.schema.json` rejects mutable tags, non-`ClusterIP` services, root or writable-root containers and unknown keys.
+
+| File | Environment |
+|---|---|
+| `values.yaml` | Defaults and documentation |
+| `values-local.yaml` | kind: `localhost:5001` registry, `api.localtest.me`, small requests, fast HPA scale-in |
+| `values-dev.yaml` | EKS dev: zone + host spread, repository/tag injected by Terraform/CI |
+| `values-prod.yaml` | EKS prod: hard zone spread, 3–10 replicas, `minAvailable: 2` |
+| `ci/validate-values.yaml` | Placeholders for offline validation only |
+
+## Validation
+
+```bash
+task chart:lint    # helm lint + kubeconform for every overlay (scripts/validate-helm.sh)
+task chart:test    # behavioural tests: tests/chart/test_notes_api_chart.py
+task chart:docs    # regenerate this README (helm-docs)
+```
+
+Accepted `trivy config` findings (MEDIUM, below the HIGH/CRITICAL gate): **KSV-01010** is a name-based false positive on the ConfigMap keys (no credentials are stored there); **KSV-0125** flags the local/placeholder registry, which is ECR in AWS.
+
+{{ template "chart.requirementsSection" . }}
+
+{{ template "chart.valuesSection" . }}
