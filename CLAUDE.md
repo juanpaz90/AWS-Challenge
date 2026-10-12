@@ -37,6 +37,7 @@ Do **not** introduce: ingress-nginx (retired), Bitnami charts/images, Promtail (
 - **Custom resources:** a CR whose CRD is installed in the *same* stack goes into a local Helm chart (see `platform-addons/charts/platform-config`), never `kubernetes_manifest`, which fails at plan time before the CRD exists. CRDs themselves may use `kubernetes_manifest`.
 - **Destroy order:** anything that runs pods must be destroyed before the CNI (`depends_on` the Calico release), or pods hang in `Terminating` once the CNI is gone. Always test `task down` as well as `task up`.
 - **Tests must not pass vacuously:** a resilience check must first prove it disrupts something (e.g. the drained node actually hosts the pods under test).
+- **Metrics:** query the live Prometheus for every metric and label before writing a dashboard or alert (a wrong name fails silently). Guard ratios against never-incremented counters (`or vector(0)` on numerators). Alert rules stay plain Prometheus files with promtool tests.
 - **Readiness:** Helm does not wait for custom resources (e.g. a CNPG `Cluster`). When a later release depends on one being Ready, add an explicit gate (see `notes-app`'s `database_ready`).
 - **Images:** builds are reproducible (commit timestamps, no local provenance) and releases pin the registry digest, so re-running `task apps:up` is a no-op.
 - **Helm:** `values.schema.json` for every chart; per-environment values files; secrets referenced by name (`existingSecret`), never templated.

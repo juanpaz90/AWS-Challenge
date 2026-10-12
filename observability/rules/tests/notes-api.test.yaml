@@ -1,0 +1,236 @@
+# promtool unit tests for rules/notes-api.rules.yaml (task obs:test).
+# Synthetic series in, expected alerts/recorded values out — proves the rules fire (and stay
+# quiet) for the right reasons without waiting for a real incident.
+rule_files:
+  - ../notes-api.rules.yaml
+
+evaluation_interval: 30s
+
+tests:
+  # --- Recording rules ----------------------------------------------------------------------
+  - name: error and latency ratios exclude probe traffic
+    interval: 30s
+    input_series:
+      # 10 req/s served: 9 ok, 1 error; 7 of them under 300 ms.
+      - series: 'http_requests_total{job="notes-api",handler="/notes",status="200"}'
+        values: '0+270x20'
+      - series: 'http_requests_total{job="notes-api",handler="/notes",status="500"}'
+        values: '0+30x20'
+      # Probe traffic must not count toward the SLIs.
+      - series: 'http_requests_total{job="notes-api",handler="/readyz",status="503"}'
+        values: '0+600x20'
+      - series: 'http_request_duration_seconds_bucket{job="notes-api",handler="/notes",le="0.3"}'
+        values: '0+210x20'
+      - series: 'http_request_duration_seconds_bucket{job="notes-api",handler="/notes",le="+Inf"}'
+        values: '0+300x20'
+      - series: 'http_request_duration_seconds_count{job="notes-api",handler="/notes"}'
+        values: '0+300x20'
+    promql_expr_test:
+      - expr: notes_api:slo_errors:ratio_rate5m
+        eval_time: 10m
+        exp_samples:
+          - labels: 'notes_api:slo_errors:ratio_rate5m'
+            value: 0.1
+      - expr: round(notes_api:slo_latency_slow:ratio_rate5m * 1000) # float-safe: 0.3 → 300
+        eval_time: 10m
+        exp_samples:
+          - labels: '{}'
+            value: 300
+      - expr: notes_api:http_requests:rate5m
+        eval_time: 10m
+        exp_samples:
+          - labels: 'notes_api:http_requests:rate5m'
+            value: 10
+
+  - name: error ratio is 0, not empty, when no 5xx has ever happened
+    interval: 30s
+    input_series:
+      - series: 'http_requests_total{job="notes-api",handler="/notes",status="200"}'
+        values: '0+300x20'
+    promql_expr_test:
+      - expr: notes_api:slo_errors:ratio_rate5m
+        eval_time: 10m
+        exp_samples:
+          - labels: 'notes_api:slo_errors:ratio_rate5m'
+            value: 0
+
+  - name: no ratio at all without traffic (no false 0% or 100%)
+    interval: 30s
+    input_series:
+      - series: 'up{job="notes-api"}'
+        values: '1x20'
+    promql_expr_test:
+      - expr: notes_api:slo_errors:ratio_rate5m
+        eval_time: 10m
+        exp_samples: []
+
+  # --- NotesApiDown -------------------------------------------------------------------------
+  - name: NotesApiDown fires when no replica is available, not before 1m
+    interval: 30s
+    input_series:
+      - series: 'up{job="notes-api",pod="notes-api-a"}'
+        values: '1 1 1 1 _ _ _ _ _ _'
+      - series: 'kube_deployment_status_replicas_available{namespace="notes",deployment="notes-api"}'
+        values: '2 2 2 2 0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: NotesApiDown
+        exp_alerts: []
+      - eval_time: 2m30s
+        alertname: NotesApiDown
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: NotesApiDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: notes-api
+            exp_annotations:
+              summary: Notes API is down
+              description: No Notes API replica is available or scrapeable. Users get errors from the gateway.
+              runbook_url: https://github.com/juanpaz90/AWS-Challenge/blob/main/docs/runbook.md#notesapidown
+
+  # --- NotesApiHigh5xxRate ------------------------------------------------------------------
+  - name: 5xx alert fires above 5% with real traffic and stays quiet below
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="notes-api",handler="/notes",status="200"}'
+        values: '0+540x20'
+      - series: 'http_requests_total{job="notes-api",handler="/notes",status="500"}'
+        values: '0+60x20' # 10% errors
+      # Probe traffic is excluded from the SLI, so it must not dilute the error ratio.
+      - series: 'http_requests_total{job="notes-api",handler="/healthz",status="200"}'
+        values: '0+600x20'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: NotesApiHigh5xxRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: notes-api
+            exp_annotations:
+              summary: Notes API 5xx ratio above 5%
+              description: 10% of Notes API requests failed with a 5xx over the last 5 minutes.
+              runbook_url: https://github.com/juanpaz90/AWS-Challenge/blob/main/docs/runbook.md#notesapihigh5xxrate
+
+  - name: 5xx alert stays quiet at 1% errors
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="notes-api",handler="/notes",status="200"}'
+        values: '0+594x20'
+      - series: 'http_requests_total{job="notes-api",handler="/notes",status="500"}'
+        values: '0+6x20'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: NotesApiHigh5xxRate
+        exp_alerts: []
+
+  # --- NotesApiCrashLooping -----------------------------------------------------------------
+  - name: crash loop alert after more than 3 restarts in 15m
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="notes",pod="notes-api-x",container="api"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: NotesApiCrashLooping
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: notes-api
+              namespace: notes
+              pod: notes-api-x
+              container: api
+            exp_annotations:
+              summary: Notes API pod notes-api-x is restarting repeatedly
+              description: Container api in notes-api-x restarted 10 times in 15 minutes.
+              runbook_url: https://github.com/juanpaz90/AWS-Challenge/blob/main/docs/runbook.md#notesapicrashlooping
+
+  # --- NotesDbPvcUsageHigh ------------------------------------------------------------------
+  - name: PVC alert from kubelet volume stats (EBS)
+    interval: 1m
+    input_series:
+      - series: 'kubelet_volume_stats_used_bytes{namespace="notes",persistentvolumeclaim="notes-db-1"}'
+        values: '90x15'
+      - series: 'kubelet_volume_stats_capacity_bytes{namespace="notes",persistentvolumeclaim="notes-db-1"}'
+        values: '100x15'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: NotesDbPvcUsageHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: notes-api
+              namespace: notes
+              persistentvolumeclaim: notes-db-1
+            exp_annotations:
+              summary: Database volume notes-db-1 is over 80% full
+              description: notes-db-1 is 90% full; PostgreSQL stops accepting writes when it is full.
+              runbook_url: https://github.com/juanpaz90/AWS-Challenge/blob/main/docs/runbook.md#notesdbpvcusagehigh
+
+  - name: PVC alert falls back to database size when kubelet stats are missing (kind local-path)
+    interval: 1m
+    input_series:
+      - series: 'cnpg_pg_database_size_bytes{namespace="notes",pod="notes-db-1",datname="app"}'
+        values: '1700x15'
+      - series: 'cnpg_pg_database_size_bytes{namespace="notes",pod="notes-db-1",datname="postgres"}'
+        values: '100x15'
+      - series: 'kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace="notes",persistentvolumeclaim="notes-db-1"}'
+        values: '2000x15'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: NotesDbPvcUsageHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: notes-api
+              namespace: notes
+              persistentvolumeclaim: notes-db-1
+            exp_annotations:
+              summary: Database volume notes-db-1 is over 80% full
+              description: notes-db-1 is 90% full; PostgreSQL stops accepting writes when it is full.
+              runbook_url: https://github.com/juanpaz90/AWS-Challenge/blob/main/docs/runbook.md#notesdbpvcusagehigh
+
+  - name: PVC alert quiet at low usage
+    interval: 1m
+    input_series:
+      - series: 'cnpg_pg_database_size_bytes{namespace="notes",pod="notes-db-1",datname="app"}'
+        values: '30x15'
+      - series: 'kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace="notes",persistentvolumeclaim="notes-db-1"}'
+        values: '2000x15'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: NotesDbPvcUsageHigh
+        exp_alerts: []
+
+  # --- Error budget burn --------------------------------------------------------------------
+  - name: fast burn pages on a sustained 10% error rate
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="notes-api",handler="/notes",status="200"}'
+        values: '0+540x90'
+      - series: 'http_requests_total{job="notes-api",handler="/notes",status="500"}'
+        values: '0+60x90'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: NotesApiErrorBudgetBurnFast
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: notes-api
+            exp_annotations:
+              summary: Notes API availability error budget burning fast
+              description: At the current error rate the 30-day 99.5% availability budget runs out within days (burn rate >= 6).
+              runbook_url: https://github.com/juanpaz90/AWS-Challenge/blob/main/docs/runbook.md#notesapierrorbudgetburn-fast--slow
+
+  - name: fast burn stays quiet within budget (0.3% errors)
+    interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="notes-api",handler="/notes",status="200"}'
+        values: '0+997x90'
+      - series: 'http_requests_total{job="notes-api",handler="/notes",status="500"}'
+        values: '0+3x90'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: NotesApiErrorBudgetBurnFast
+        exp_alerts: []

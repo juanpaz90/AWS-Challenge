@@ -27,4 +27,14 @@ module "notes_app" {
     }
     app_message = var.app_message
   }
+
+  observability = {
+    enabled         = true
+    dashboard_files = [for f in sort(fileset(local.observability_dir, "dashboards/*.json")) : "${local.observability_dir}/${f}"]
+    rule_files      = [for f in sort(fileset(local.observability_dir, "rules/*.rules.yaml")) : "${local.observability_dir}/${f}"]
+  }
+}
+
+locals {
+  observability_dir = abspath("${path.module}/../../../../observability")
 }

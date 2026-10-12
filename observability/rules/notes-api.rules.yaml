@@ -1,0 +1,192 @@
+# Notes API — SLO recording rules and alerts (docs/slo.md, docs/runbook.md).
+# Plain Prometheus rule file: validated and unit-tested with promtool (task obs:test), deployed
+# as a PrometheusRule by infra/modules/notes-app.
+groups:
+  - name: notes-api.slo.recording
+    interval: 30s
+    rules:
+      - record: notes_api:http_requests:rate5m
+        expr: sum(rate(http_requests_total{job="notes-api",handler!~"/healthz|/readyz|/metrics"}[5m]))
+      - record: notes_api:http_request_duration_seconds:p95_5m
+        expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job="notes-api",handler!~"/healthz|/readyz|/metrics"}[5m])))
+      # Availability SLI over 5m: share of requests answered with a 5xx.
+      - record: notes_api:slo_errors:ratio_rate5m
+        expr: |
+          # "or vector(0)": with no 5xx at all the series does not exist; the ratio must be 0, not empty.
+          (sum(rate(http_requests_total{job="notes-api",handler!~"/healthz|/readyz|/metrics",status=~"5.."}[5m])) or vector(0))
+          /
+          sum(rate(http_requests_total{job="notes-api",handler!~"/healthz|/readyz|/metrics"}[5m]))
+      # Latency SLI over 5m: share of requests slower than 300 ms.
+      - record: notes_api:slo_latency_slow:ratio_rate5m
+        expr: |
+          1 - (
+            sum(rate(http_request_duration_seconds_bucket{job="notes-api",handler!~"/healthz|/readyz|/metrics",le="0.3"}[5m]))
+            /
+            sum(rate(http_request_duration_seconds_count{job="notes-api",handler!~"/healthz|/readyz|/metrics"}[5m]))
+          )
+      # Availability SLI over 30m: share of requests answered with a 5xx.
+      - record: notes_api:slo_errors:ratio_rate30m
+        expr: |
+          # "or vector(0)": with no 5xx at all the series does not exist; the ratio must be 0, not empty.
+          (sum(rate(http_requests_total{job="notes-api",handler!~"/healthz|/readyz|/metrics",status=~"5.."}[30m])) or vector(0))
+          /
+          sum(rate(http_requests_total{job="notes-api",handler!~"/healthz|/readyz|/metrics"}[30m]))
+      # Latency SLI over 30m: share of requests slower than 300 ms.
+      - record: notes_api:slo_latency_slow:ratio_rate30m
+        expr: |
+          1 - (
+            sum(rate(http_request_duration_seconds_bucket{job="notes-api",handler!~"/healthz|/readyz|/metrics",le="0.3"}[30m]))
+            /
+            sum(rate(http_request_duration_seconds_count{job="notes-api",handler!~"/healthz|/readyz|/metrics"}[30m]))
+          )
+      # Availability SLI over 1h: share of requests answered with a 5xx.
+      - record: notes_api:slo_errors:ratio_rate1h
+        expr: |
+          # "or vector(0)": with no 5xx at all the series does not exist; the ratio must be 0, not empty.
+          (sum(rate(http_requests_total{job="notes-api",handler!~"/healthz|/readyz|/metrics",status=~"5.."}[1h])) or vector(0))
+          /
+          sum(rate(http_requests_total{job="notes-api",handler!~"/healthz|/readyz|/metrics"}[1h]))
+      # Latency SLI over 1h: share of requests slower than 300 ms.
+      - record: notes_api:slo_latency_slow:ratio_rate1h
+        expr: |
+          1 - (
+            sum(rate(http_request_duration_seconds_bucket{job="notes-api",handler!~"/healthz|/readyz|/metrics",le="0.3"}[1h]))
+            /
+            sum(rate(http_request_duration_seconds_count{job="notes-api",handler!~"/healthz|/readyz|/metrics"}[1h]))
+          )
+      # Availability SLI over 6h: share of requests answered with a 5xx.
+      - record: notes_api:slo_errors:ratio_rate6h
+        expr: |
+          # "or vector(0)": with no 5xx at all the series does not exist; the ratio must be 0, not empty.
+          (sum(rate(http_requests_total{job="notes-api",handler!~"/healthz|/readyz|/metrics",status=~"5.."}[6h])) or vector(0))
+          /
+          sum(rate(http_requests_total{job="notes-api",handler!~"/healthz|/readyz|/metrics"}[6h]))
+      # Latency SLI over 6h: share of requests slower than 300 ms.
+      - record: notes_api:slo_latency_slow:ratio_rate6h
+        expr: |
+          1 - (
+            sum(rate(http_request_duration_seconds_bucket{job="notes-api",handler!~"/healthz|/readyz|/metrics",le="0.3"}[6h]))
+            /
+            sum(rate(http_request_duration_seconds_count{job="notes-api",handler!~"/healthz|/readyz|/metrics"}[6h]))
+          )
+      # Availability SLI over 3d: share of requests answered with a 5xx.
+      - record: notes_api:slo_errors:ratio_rate3d
+        expr: |
+          # "or vector(0)": with no 5xx at all the series does not exist; the ratio must be 0, not empty.
+          (sum(rate(http_requests_total{job="notes-api",handler!~"/healthz|/readyz|/metrics",status=~"5.."}[3d])) or vector(0))
+          /
+          sum(rate(http_requests_total{job="notes-api",handler!~"/healthz|/readyz|/metrics"}[3d]))
+      # Latency SLI over 3d: share of requests slower than 300 ms.
+      - record: notes_api:slo_latency_slow:ratio_rate3d
+        expr: |
+          1 - (
+            sum(rate(http_request_duration_seconds_bucket{job="notes-api",handler!~"/healthz|/readyz|/metrics",le="0.3"}[3d]))
+            /
+            sum(rate(http_request_duration_seconds_count{job="notes-api",handler!~"/healthz|/readyz|/metrics"}[3d]))
+          )
+
+  - name: notes-api.alerts
+    rules:
+      - alert: NotesApiDown
+        expr: |
+          (sum(kube_deployment_status_replicas_available{namespace="notes",deployment="notes-api"}) == 0)
+          or
+          absent(up{job="notes-api"} == 1)
+        for: 1m
+        labels:
+          severity: critical
+          service: notes-api
+        annotations:
+          summary: "Notes API is down"
+          description: "No Notes API replica is available or scrapeable. Users get errors from the gateway."
+          runbook_url: https://github.com/juanpaz90/AWS-Challenge/blob/main/docs/runbook.md#notesapidown
+      - alert: NotesApiHigh5xxRate
+        expr: |
+          notes_api:slo_errors:ratio_rate5m > 0.05
+          and
+          notes_api:http_requests:rate5m > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: notes-api
+        annotations:
+          summary: "Notes API 5xx ratio above 5%"
+          description: "{{ $value | humanizePercentage }} of Notes API requests failed with a 5xx over the last 5 minutes."
+          runbook_url: https://github.com/juanpaz90/AWS-Challenge/blob/main/docs/runbook.md#notesapihigh5xxrate
+      - alert: NotesApiCrashLooping
+        expr: |
+          increase(kube_pod_container_status_restarts_total{namespace="notes",container="api"}[15m]) > 3
+        for: 1m
+        labels:
+          severity: warning
+          service: notes-api
+        annotations:
+          summary: "Notes API pod {{ $labels.pod }} is restarting repeatedly"
+          description: "Container api in {{ $labels.pod }} restarted {{ $value | humanize }} times in 15 minutes."
+          runbook_url: https://github.com/juanpaz90/AWS-Challenge/blob/main/docs/runbook.md#notesapicrashlooping
+      - alert: NotesDbPvcUsageHigh
+        expr: |
+          # Kubelet volume stats where the storage reports them (EBS on EKS)...
+          (
+            max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes{namespace="notes"})
+            /
+            max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{namespace="notes"})
+          )
+          # ...otherwise (kind local-path volumes report none) PostgreSQL's own database size against
+          # the PVC request. An underestimate: WAL and filesystem overhead are not counted.
+          or on (namespace, persistentvolumeclaim)
+          (
+            sum by (namespace, persistentvolumeclaim) (
+              label_replace(cnpg_pg_database_size_bytes{namespace="notes"}, "persistentvolumeclaim", "$1", "pod", "(.+)")
+            )
+            /
+            max by (namespace, persistentvolumeclaim) (kube_persistentvolumeclaim_resource_requests_storage_bytes{namespace="notes"})
+          )
+          > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          service: notes-api
+        annotations:
+          summary: "Database volume {{ $labels.persistentvolumeclaim }} is over 80% full"
+          description: "{{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full; PostgreSQL stops accepting writes when it is full."
+          runbook_url: https://github.com/juanpaz90/AWS-Challenge/blob/main/docs/runbook.md#notesdbpvcusagehigh
+      - alert: NotesApiErrorBudgetBurnFast
+        expr: |
+          (notes_api:slo_errors:ratio_rate1h > (14.4 * 0.005) and notes_api:slo_errors:ratio_rate5m > (14.4 * 0.005))
+          or
+          (notes_api:slo_errors:ratio_rate6h > (6 * 0.005) and notes_api:slo_errors:ratio_rate30m > (6 * 0.005))
+        for: 2m
+        labels:
+          severity: critical
+          service: notes-api
+        annotations:
+          summary: "Notes API availability error budget burning fast"
+          description: "At the current error rate the 30-day 99.5% availability budget runs out within days (burn rate >= 6)."
+          runbook_url: https://github.com/juanpaz90/AWS-Challenge/blob/main/docs/runbook.md#notesapierrorbudgetburn-fast--slow
+      - alert: NotesApiErrorBudgetBurnSlow
+        expr: |
+          notes_api:slo_errors:ratio_rate3d > 0.005
+          and
+          notes_api:slo_errors:ratio_rate6h > 0.005
+        for: 1h
+        labels:
+          severity: warning
+          service: notes-api
+        annotations:
+          summary: "Notes API availability error budget burning"
+          description: "The 99.5% availability SLO is being missed over 3 days (burn rate >= 1)."
+          runbook_url: https://github.com/juanpaz90/AWS-Challenge/blob/main/docs/runbook.md#notesapierrorbudgetburn-fast--slow
+      - alert: NotesApiLatencyBudgetBurnFast
+        expr: |
+          (notes_api:slo_latency_slow:ratio_rate1h > (14.4 * 0.05) and notes_api:slo_latency_slow:ratio_rate5m > (14.4 * 0.05))
+          or
+          (notes_api:slo_latency_slow:ratio_rate6h > (6 * 0.05) and notes_api:slo_latency_slow:ratio_rate30m > (6 * 0.05))
+        for: 2m
+        labels:
+          severity: critical
+          service: notes-api
+        annotations:
+          summary: "Notes API latency budget burning fast"
+          description: "Too many requests take longer than 300 ms; the latency SLO budget runs out within days."
+          runbook_url: https://github.com/juanpaz90/AWS-Challenge/blob/main/docs/runbook.md#notesapilatencybudgetburnfast

@@ -85,3 +85,13 @@ variable "labels" {
   type        = map(string)
   default     = {}
 }
+
+variable "observability" {
+  description = "Dashboards (Grafana JSON) and Prometheus rule files (plain, promtool-tested) to deploy, as absolute paths. The PrometheusRule CRD is installed by 20-platform."
+  type = object({
+    enabled         = optional(bool, true)
+    dashboard_files = optional(list(string), [])
+    rule_files      = optional(list(string), [])
+  })
+  default = {}
+}

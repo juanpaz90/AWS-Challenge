@@ -96,6 +96,12 @@ repos:
         language: system
         files: ^(charts/notes-api/|tests/chart/)
         pass_filenames: false
+      - id: promtool-rules
+        name: promtool check + unit-test alert rules
+        entry: task obs:test
+        language: system
+        files: ^observability/rules/
+        pass_filenames: false
       - id: helm-docs
         name: helm-docs (notes-api README)
         entry: bash -c 'cd charts/notes-api && helm-docs --chart-search-root . --template-files README.md.gotmpl'

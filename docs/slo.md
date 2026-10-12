@@ -44,17 +44,17 @@ Multi-window, multi-burn-rate alerts (Google SRE workbook pattern):
 
 Locally these will rarely fire on their own; they are demonstrated with induced failures (see the [runbook](runbook.md)).
 
-## Example recording rules (sketch)
+## Implementation
 
-```promql
-# Error ratio over 5m
-sum(rate(http_requests_total{job="notes-api",status=~"5..",handler!~"/healthz|/readyz|/metrics"}[5m]))
-/
-sum(rate(http_requests_total{job="notes-api",handler!~"/healthz|/readyz|/metrics"}[5m]))
+Implemented as code in [`observability/rules/notes-api.rules.yaml`](../observability/rules/notes-api.rules.yaml) and unit-tested with `task obs:test`:
 
-# p95 latency over 5m
-histogram_quantile(0.95,
-  sum by (le) (rate(http_request_duration_seconds_bucket{job="notes-api",handler!~"/healthz|/readyz|/metrics"}[5m])))
-```
+| Recording rule | Meaning |
+|---|---|
+| `notes_api:http_requests:rate5m` | requests/s, probes and `/metrics` excluded |
+| `notes_api:slo_errors:ratio_rate{5m,30m,1h,6h,3d}` | availability SLI: share of 5xx (0 when there are no errors, no value without traffic) |
+| `notes_api:slo_latency_slow:ratio_rate{5m,30m,1h,6h,3d}` | latency SLI: share of requests slower than 300 ms (histogram bucket `le="0.3"`) |
+| `notes_api:http_request_duration_seconds:p95_5m` | p95 latency |
 
-> Metric names and labels are implemented by `app/src/notes_api/metrics.py`: `status` is the numeric HTTP code and `handler` is the route template (e.g. `/notes/{note_id}`).
+Alerts: `NotesApiErrorBudgetBurnFast` (critical, 14.4× over 1h & 5m or 6× over 6h & 30m), `NotesApiErrorBudgetBurnSlow` (warning, 1× over 3d & 6h) and `NotesApiLatencyBudgetBurnFast` (critical). The Grafana dashboard *Notes API* shows both SLIs against their budgets.
+
+> Local caveat: Prometheus retains 24 h on kind, so the 3-day window only covers retained data. On AWS the retention is sized for the 30-day SLO window.

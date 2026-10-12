@@ -32,59 +32,83 @@
 
 ## Alerts
 
-Each entry follows the same structure: **meaning → impact → diagnose → mitigate → escalate**.
+Defined as code in [`observability/rules/notes-api.rules.yaml`](../observability/rules/notes-api.rules.yaml), unit-tested with `task obs:test`, deployed as a `PrometheusRule` by `30-apps`. Every alert carries a `runbook_url` pointing at its section below. Grafana: **Notes API** dashboard (`https://grafana.localtest.me/d/notes-api`). Each entry follows: **meaning → impact → diagnose → mitigate → escalate**.
+
+| Alert | Severity | Condition |
+|---|---|---|
+| `NotesApiDown` | critical | no available replica, or no scrapeable target, for 1m |
+| `NotesApiHigh5xxRate` | warning | > 5% of requests are 5xx over 5m (with > 0.1 req/s), for 5m |
+| `NotesApiCrashLooping` | warning | > 3 restarts of the `api` container in 15m |
+| `NotesDbPvcUsageHigh` | warning | database volume > 80% full for 10m |
+| `NotesApiErrorBudgetBurnFast` | critical | availability budget burn ≥ 14.4× (1h & 5m) or ≥ 6× (6h & 30m) |
+| `NotesApiErrorBudgetBurnSlow` | warning | availability budget burn ≥ 1× (3d & 6h) |
+| `NotesApiLatencyBudgetBurnFast` | critical | latency budget burn ≥ 14.4× or ≥ 6× |
+
+Useful log queries (Grafana → Explore → Loki, or the dashboard's Logs panel):
+
+```logql
+{namespace="notes", app="notes-api"} | json | level="error"
+{namespace="notes", app="notes-api"} | json | logger="notes_api.access" | status=~"5.."
+{namespace="notes", pod="<pod>"} | json | request_id="<id from the X-Request-ID header>"
+```
 
 ### NotesApiDown
 
-- **Meaning:** no Notes API target is up, or no ready endpoints behind the Service, for > 2 minutes.
-- **Impact:** total outage; availability SLO burning at full rate.
+- **Meaning:** no Notes API replica is available, or Prometheus cannot scrape any, for 1 minute.
+- **Impact:** total outage — the gateway answers 503; the availability SLO burns at full rate.
 - **Diagnose:**
-  1. `kubectl -n notes get pods -l app.kubernetes.io/name=notes-api -o wide`
-  2. `kubectl -n notes describe pod <pod>` — look for `ImagePullBackOff`, `CrashLoopBackOff`, failed probes, `OOMKilled`.
+  1. `kubectl -n notes get deploy,hpa,pods -l app.kubernetes.io/name=notes-api -o wide` — replicas 0? HPA disabled because the Deployment was scaled to 0?
+  2. `kubectl -n notes describe pod <pod>` — `ImagePullBackOff`, `CrashLoopBackOff`, failed probes, `OOMKilled`.
   3. `kubectl -n notes logs <pod> --previous`
-  4. Check readiness depends on the DB: is the DB up? (see `NotesDbUnavailable` steps).
-  5. Check the gateway: `kubectl -n gateway get pods`, `kubectl -n notes get httproute`.
+  4. Readiness depends on the database: `kubectl -n notes get cluster.postgresql.cnpg.io notes-db` (Ready?) and the dashboard's *Database connections* panel.
+  5. Gateway: `kubectl -n gateway get pods`, `kubectl -n notes get httproute notes-api -o yaml` (status conditions).
 - **Mitigate:**
-  - Bad release → `helm -n notes rollback notes-api` (or revert the commit when on Argo CD).
-  - Image pull failure → confirm the tag exists in the registry; re-run `task build`.
-  - Resource exhaustion → check node capacity: `kubectl top nodes`.
-- **Escalate:** if the DB is the cause, follow the DB section.
+  - Scaled to 0 by mistake → `kubectl -n notes scale deploy/notes-api --replicas=2` (the HPA resumes from there).
+  - Bad release → `helm -n notes rollback notes-api`, then reconcile with `task apps:up` (or revert the commit when on Argo CD).
+  - Image pull failure → check the digest exists in the registry; re-run `task apps:up`.
+  - Database not Ready → see `NotesDbPvcUsageHigh` and `kubectl -n cnpg-system logs deploy/cnpg-cloudnative-pg`.
+- **Escalate:** if the database is the cause and does not recover, follow *Restore from backup*.
 
 ### NotesApiHigh5xxRate
 
-- **Meaning:** more than 5% of requests return 5xx over 5 minutes (or the SLO fast-burn alert fired).
-- **Impact:** partial outage; error budget burning.
+- **Meaning:** more than 5% of API requests (excluding probes and `/metrics`) returned 5xx over 5 minutes, with real traffic.
+- **Impact:** partial outage; the availability error budget is burning.
 - **Diagnose:**
-  1. Grafana → Notes API dashboard: which endpoints and which pods?
+  1. Dashboard → *Request rate by route and status*: which routes, since when?
   2. Loki: `{namespace="notes", app="notes-api"} | json | level="error"`
-  3. Did a deploy just happen? `helm -n notes history notes-api`
-  4. DB connection errors? Check DB pod status and connection count panel.
+  3. A deploy just happened? `helm -n notes history notes-api`
+  4. Database errors? *Database connections* panel near the pool limit (`DB_POOL_SIZE + DB_MAX_OVERFLOW` per pod)?
 - **Mitigate:** roll back the last release; if one pod only, delete it and let the Deployment replace it.
-- **Escalate:** if errors persist after rollback, investigate DB and network policies.
+- **Escalate:** if errors persist after rollback, investigate the database and the network policies.
+
+### NotesApiCrashLooping
+
+- **Meaning:** the `api` container of a pod restarted more than 3 times in 15 minutes.
+- **Diagnose:** `kubectl -n notes logs <pod> --previous`; `describe` for `OOMKilled`, missing env/Secret, database authentication errors.
+- **Mitigate:** fix the configuration or roll back; raise the memory limit only with evidence from the dashboard.
 
 ### NotesDbPvcUsageHigh
 
-- **Meaning:** a PVC in `notes` is more than 80% full.
-- **Impact:** the DB stops accepting writes when the volume is full.
+- **Meaning:** the database volume is more than 80% full for 10 minutes. Uses kubelet volume stats where the storage reports them (EBS). kind's local-path volumes report none, so locally the rule falls back to PostgreSQL's database size ÷ PVC request — an **underestimate** (WAL and filesystem overhead not counted).
+- **Impact:** PostgreSQL stops accepting writes when the volume is full.
 - **Diagnose:**
-  1. `kubectl -n notes get pvc`
-  2. Dashboard panel: volume usage trend — sudden growth (WAL build-up, failing archiving) or steady growth?
-  3. `kubectl -n notes exec <cluster>-1 -- du -sh /var/lib/postgresql/data/pgdata/pg_wal`
+  1. `kubectl -n notes get pvc`; dashboard → *Database size vs volume*.
+  2. `kubectl -n notes exec notes-db-1 -c postgres -- du -sh /var/lib/postgresql/data/pgdata/pg_wal` — WAL build-up (failing archiving) or data growth?
 - **Mitigate:**
-  - Increase `storage.size` in the CNPG `Cluster` values and apply (volume expansion; `gp3` supports it on AWS, `local-path` does **not** — locally, recreate).
-  - If WAL is growing because archiving fails (AWS), fix the S3 backup credentials first.
+  - Increase `database_storage_size` in `30-apps` and apply (online expansion works with `gp3`; local-path does **not** expand — locally, recreate).
+  - If WAL grows because archiving fails (AWS), fix the S3 backup credentials first.
 - **Escalate:** plan a capacity review.
 
-### NotesApiCrashLooping (optional)
+### NotesApiErrorBudgetBurn (fast / slow)
 
-- **Meaning:** a Notes API container restarted more than 3 times in 15 minutes.
-- **Diagnose:** `kubectl -n notes logs <pod> --previous`; look for config errors, missing env vars/Secret, DB auth failures, `OOMKilled` in `describe`.
-- **Mitigate:** fix config / roll back; raise memory limit only with evidence from the dashboard.
+- **Meaning:** the 99.5% availability SLO's error budget ([`slo.md`](slo.md)) is being consumed too fast. *Fast* (critical): at this rate the 30-day budget is gone in days. *Slow* (warning): the SLO is being missed over 3 days.
+- **Diagnose / mitigate:** as `NotesApiHigh5xxRate`; the dashboard's *Error ratio vs SLO budget* panel shows the 5m and 1h ratios against the 0.5% budget. Apply the error budget policy in `slo.md`.
 
-### NotesApiSloBurn (fast / slow)
+### NotesApiLatencyBudgetBurnFast
 
-- **Meaning:** availability or latency error budget is burning faster than allowed (see [`slo.md`](slo.md)).
-- **Diagnose / mitigate:** follow `NotesApiHigh5xxRate` for errors; for latency, check HPA status (`kubectl -n notes get hpa`), CPU throttling and DB query time.
+- **Meaning:** more than the budgeted share of requests take longer than 300 ms (latency SLO: 95% ≤ 300 ms), burning the budget at ≥ 6×.
+- **Diagnose:** dashboard → *Latency percentiles* and *API CPU per pod vs request*. HPA at max (`kubectl -n notes get hpa`)? CPU near the request without scaling? Slow queries (`kubectl -n notes exec notes-db-1 -c postgres -- psql -d app -c "select * from pg_stat_activity where state <> 'idle'"`)?
+- **Mitigate:** raise HPA `maxReplicas` or CPU requests; investigate slow queries; roll back a slow release.
 
 ---
 

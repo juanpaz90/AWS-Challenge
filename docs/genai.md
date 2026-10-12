@@ -414,6 +414,60 @@ Both failed applies stopped before creating anything (only the namespaces existe
 
 ---
 
+### P-007 — Observability as code (Phase 10)
+
+- **Date:** 2026-10-11
+- **Phase / story:** Phase 10 / S7
+- **Goal:** dashboard, saved log query, alerts (API down, 5xx, PVC, crash loop), SLO recording rules and burn-rate alerts — all as code — with proof that load shows on the dashboard, an induced failure fires an alert and logs are searchable.
+- **Mode:** inspect live metrics → generate → promtool check + unit tests → deploy → live checks (**1 failure**) → fix → re-run
+
+**Prompt**
+
+> Lets go with Phase 10: Observability (SRE practices)
+
+**Commits**
+
+- Raw AI output: _fill in_
+- Human corrections: _fill in_
+
+**Verified against the live system before writing queries**
+
+| Question | Finding | Effect |
+|---|---|---|
+| API metric labels | `job="notes-api"`, as `slo.md` assumed | SLIs use `job` + route-template `handler` |
+| Histogram buckets | `0.3` exists | latency SLI uses `le="0.3"` exactly |
+| PVC usage metrics | **`kubelet_volume_stats_*` absent cluster-wide** (local-path volumes are host dirs) | the standard PVC alert would never fire locally → fallback to CNPG database size ÷ PVC request, with both paths unit-tested |
+| DB connections | `cnpg_backends_total` with `application_name="notes-api"` (set in the app in Phase 4) | dashboard separates API connections from the exporter's |
+| Waiting-reason metric | only exists while a container waits | crash-loop alert uses restart counts instead |
+| Grafana provisioning | sidecar label `grafana_dashboard=1`, all namespaces; datasource UIDs `prometheus`, `loki` | dashboard ConfigMap in `notes`, fixed UIDs |
+| promtool | not installed | `prom/prometheus:v3.15.0@sha256:…` — same version the cluster runs |
+
+**Validation results**
+
+| Check | Result |
+|---|---|
+| `promtool check rules` | 19 rules (12 recording, 7 alerts) |
+| `promtool test rules` (13 cases) | ✅ after fixing 2 errors in the test data (float equality; `/health` vs the excluded `/healthz`) |
+| live: rule groups healthy, dashboard + datasources served | ✅ |
+| live: k6 load visible | 596 req/s recorded; **all 19 dashboard queries return data** (after correction 1) |
+| live: logs searchable | LogQL by namespace + pod + JSON fields → access lines |
+| live: induced failure | API scaled to 0 → `NotesApiDown` firing in Alertmanager with its runbook link → resolved after restore |
+| re-plan all stacks | no changes |
+
+**Corrections and why**
+
+| # | What the AI produced | Found by | Fix |
+|---|---|---|---|
+| 1 | Error-ratio recording rules `sum(rate(5xx)) / sum(rate(all))` | the live check evaluating *every* dashboard query | With zero 5xx ever, the 5xx series does not exist, so the ratio was **empty, not 0**: a healthy service showed "No data" on its error panel (the stat panel only worked because of an `or vector(0)` patch). Numerators now use `or vector(0)`; promtool tests pin both edge cases (no errors → 0, no traffic → no value). |
+| 2 | Runbook alert section written before the rules | review against the deployed rules | Referenced a non-existent `NotesDbUnavailable`, wrong timings, one "SloBurn" section for three alerts. Rewritten from the rules; every `runbook_url` anchor resolves. |
+
+**Assumptions / uncertainties**
+
+- No Alertmanager receiver locally; routing to Slack/PagerDuty (with the webhook in a Secret) belongs to the AWS work.
+- Dashboard JSON is generated; Grafana edits must be exported back to the repository.
+
+---
+
 ## 4. Validation summary
 
 | Slice | validate | tflint | checkov/trivy | helm lint | kubeconform | Applied | Tests |

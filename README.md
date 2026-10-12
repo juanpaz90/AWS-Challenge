@@ -4,7 +4,7 @@ Deploy a sample API (multiple replicas) and its PostgreSQL database with persist
 
 **Local-first, cloud-ready:** everything runs on a Terraform-managed `kind` cluster, and the same charts and platform layer are reused on AWS EKS.
 
-> Status: ✅ Milestone 1 (core, local) done — `task up` builds everything from zero and `task test` proves all 10 functional checks. See the [milestone checklist](docs/project-plan.md#11-milestone-checklist).
+> Status: ✅ Milestone 1 (core, local) done — `task up` builds everything from zero and `task test` proves all 10 functional checks. Phase 10 (observability as code) done. See the [milestone checklist](docs/project-plan.md#11-milestone-checklist).
 
 ## Quick start
 
@@ -38,6 +38,7 @@ Full diagrams in [docs/architecture.md](docs/architecture.md).
 | [Architecture](docs/architecture.md) | Topology, network security, Terraform layout, local → AWS |
 | [ADRs](docs/adr/README.md) | Architecture decisions and trade-offs |
 | [SLOs](docs/slo.md) | Availability and latency objectives, error budgets |
+| [Observability](observability/README.md) | Dashboards, alert and SLO rules as code |
 | [Runbook](docs/runbook.md) | Alert responses and operational procedures |
 | [GenAI](docs/genai.md) | How AI was used, validated and corrected |
 | [CLAUDE.md](CLAUDE.md) | Rules for the AI assistant |

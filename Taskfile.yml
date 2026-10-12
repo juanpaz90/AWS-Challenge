@@ -20,6 +20,8 @@ vars:
   PLATFORM_STACK: infra/environments/local/20-platform
   APPS_STACK: infra/environments/local/30-apps
   REGISTRY: localhost:5001
+  # promtool from the same Prometheus version the cluster runs (kube-prometheus-stack 92.3.0)
+  PROMTOOL_IMAGE: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
 
 tasks:
   default:
@@ -95,6 +97,17 @@ tasks:
     dir: charts/notes-api
     cmds:
       - helm-docs --chart-search-root . --template-files README.md.gotmpl
+
+  obs:test:
+    desc: Validate and unit-test the Prometheus rules with promtool (same version as the cluster)
+    cmds:
+      - docker run --rm -v "$PWD/observability/rules:/rules:ro" -w /rules --entrypoint promtool {{.PROMTOOL_IMAGE}} check rules notes-api.rules.yaml
+      - docker run --rm -v "$PWD/observability/rules:/rules:ro" -w /rules/tests --entrypoint promtool {{.PROMTOOL_IMAGE}} test rules notes-api.test.yaml
+
+  obs:check:
+    desc: "Live checks: rules/dashboard loaded, load visible, logs searchable, induced failure fires an alert (short API outage)"
+    cmds:
+      - tests/observability/check.sh
 
   compose:up:
     desc: Start PostgreSQL → migrations → API with Docker Compose on http://127.0.0.1:8080

@@ -139,14 +139,14 @@ Bonus priority follows the plan: Observability → CI/CD → AWS IaC → GitOps 
 
 **As an** SRE, **I want** metrics, logs, dashboards, alerts and SLOs defined as code, **so that** service health is visible and measurable.
 
-**Acceptance criteria**
+**Acceptance criteria** — ✅ met in Phase 10 (`task obs:test`, `task obs:check`)
 
-- [ ] A Grafana dashboard (as code) shows request rate, error rate, p95 latency, replica count, DB connections and pod restarts.
-- [ ] API logs are searchable in Loki by namespace and pod.
-- [ ] Alerts exist for: API down, 5xx rate above threshold, PVC usage > 80% (optional: crash loop).
-- [ ] SLOs for availability and p95 latency are documented with error budgets in [`slo.md`](slo.md).
-- [ ] Each alert has a runbook entry in [`runbook.md`](runbook.md).
-- [ ] A `k6` load test is visible on the dashboard, and an induced failure fires an alert.
+- [x] A Grafana dashboard (as code) shows request rate, error rate, p95 latency, replica count, DB connections and pod restarts.
+- [x] API logs are searchable in Loki by namespace and pod.
+- [x] Alerts exist for: API down, 5xx rate above threshold, PVC usage > 80% (optional: crash loop).
+- [x] SLOs for availability and p95 latency are documented with error budgets in [`slo.md`](slo.md).
+- [x] Each alert has a runbook entry in [`runbook.md`](runbook.md).
+- [x] A `k6` load test is visible on the dashboard, and an induced failure fires an alert.
 
 ---
 

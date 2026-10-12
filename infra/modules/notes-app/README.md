@@ -41,6 +41,8 @@ Deploys the application layer into one namespace: the PostgreSQL database (Cloud
 | ---- | ---- |
 | [helm_release.api](https://registry.terraform.io/providers/hashicorp/helm/latest/docs/resources/release) | resource |
 | [helm_release.database](https://registry.terraform.io/providers/hashicorp/helm/latest/docs/resources/release) | resource |
+| [kubernetes_config_map_v1.dashboard](https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/config_map_v1) | resource |
+| [kubernetes_manifest.prometheus_rule](https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/manifest) | resource |
 | [kubernetes_namespace_v1.notes](https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/namespace_v1) | resource |
 | [kubernetes_network_policy_v1.database_egress](https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/network_policy_v1) | resource |
 | [kubernetes_network_policy_v1.database_ingress](https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/network_policy_v1) | resource |
@@ -58,6 +60,7 @@ Deploys the application layer into one namespace: the PostgreSQL database (Cloud
 | labels | Labels added to the namespace. | `map(string)` | `{}` | no |
 | namespace | Namespace for the API and its database (Pod Security restricted). | `string` | `"notes"` | no |
 | network\_policy | Peers allowed to reach the database pods, and the Kubernetes API endpoints they may call. | <pre>object({<br/>    operator_namespace = optional(string, "cnpg-system")<br/>    operator_pod_labels = optional(map(string), {<br/>      "app.kubernetes.io/name" = "cloudnative-pg"<br/>    })<br/>    monitoring_namespace = optional(string, "monitoring")<br/>    monitoring_pod_labels = optional(map(string), {<br/>      "app.kubernetes.io/name" = "prometheus"<br/>    })<br/>    dns_namespace  = optional(string, "kube-system")<br/>    dns_pod_labels = optional(map(string), { "k8s-app" = "kube-dns" })<br/>  })</pre> | `{}` | no |
+| observability | Dashboards (Grafana JSON) and Prometheus rule files (plain, promtool-tested) to deploy, as absolute paths. The PrometheusRule CRD is installed by 20-platform. | <pre>object({<br/>    enabled         = optional(bool, true)<br/>    dashboard_files = optional(list(string), [])<br/>    rule_files      = optional(list(string), [])<br/>  })</pre> | `{}` | no |
 
 ## Outputs
 
