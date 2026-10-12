@@ -15,8 +15,10 @@ pass "all nodes Ready (Calico CNI)"
 
 # 2. Every Helm release deployed
 expected="alloy calico cert-manager cnpg envoy-gateway kube-prometheus-stack loki metrics-server platform-config"
-releases="$(helm --kube-context "$CONTEXT" list -A -o json | jq -r '.[] | select(.status=="deployed") | .name' | sort | xargs)"
-[[ "$releases" == "$expected" ]] || fail "deployed releases: '$releases' (expected '$expected')"
+deployed="$(helm --kube-context "$CONTEXT" list -A -o json | jq -r '.[] | select(.status=="deployed") | .name')"
+for r in $expected; do
+  grep -qx "$r" <<<"$deployed" || fail "platform release '$r' is not deployed (deployed: $(xargs <<<"$deployed"))"
+done
 pass "9 Helm releases deployed (+ Calico CRDs applied by Terraform)"
 
 # 3. Workloads healthy in every platform namespace

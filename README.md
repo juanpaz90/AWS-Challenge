@@ -4,7 +4,7 @@ Deploy a sample API (multiple replicas) and its PostgreSQL database with persist
 
 **Local-first, cloud-ready:** everything runs on a Terraform-managed `kind` cluster, and the same charts and platform layer are reused on AWS EKS.
 
-> Status: 🚧 in progress — see the [milestone checklist](docs/project-plan.md#11-milestone-checklist).
+> Status: 🚧 Phases 0–8 done — the full local stack comes up with one command. See the [milestone checklist](docs/project-plan.md#11-milestone-checklist).
 
 ## Quick start
 

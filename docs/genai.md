@@ -308,6 +308,62 @@ Both failed applies stopped before creating anything (only the namespaces existe
 
 ---
 
+### P-005 — `notes-app` module and `local/30-apps` stack (Phase 8)
+
+- **Date:** 2026-10-11
+- **Phase / story:** Phase 8 / S5
+- **Goal:** `notes` namespace (PSA restricted), CNPG `Cluster` via the official chart (1 instance, local-path PVC, operator-generated Secret), image in the local registry, Notes API release; `task up` / `task down` over all three stacks.
+- **Mode:** research → generate → validate → push → plan → apply → test → **`task down` + `task up` from zero** → test → re-run
+
+**Prompt**
+
+> lets go with Phase 8: Stack local/30-apps
+
+**Commits**
+
+- Raw AI output: _fill in_
+- Human corrections: _fill in_
+
+**Verified before writing code**
+
+| Question | Finding | Effect |
+|---|---|---|
+| CNPG `cluster` chart defaults | PostgreSQL **16** floating tag; `enablePDB: true`; `enableSuperuserAccess: true` | Pinned `postgresql:18.6-minimal-trixie@sha256:…` (same as Compose); PDB only with >1 instance, because a single-instance PDB blocks draining its node (Phase 9 check 9); no superuser Secret |
+| CNPG network needs | Operator → pods on 8000 + 5432; instances ↔ each other; instance manager → Kubernetes API | Database ingress/egress policies, API server allowed via its EndpointSlice addresses (policies match after Service DNAT) |
+| kind storage | `standard` StorageClass, local-path, `WaitForFirstConsumer` | `storage_class = "standard"` |
+
+**Validation results**
+
+| Step | Result | Notes |
+|---|---|---|
+| validate / tflint / trivy | ✅ | — |
+| plan + apply | ✅ | DB release "completed" in **1 s**; the readiness gate then waited **34 s** for PostgreSQL before the API and its migration hook |
+| `apps:check` (9 checks) | ✅ | CRUD through `https://api.localtest.me`, exact digest running, no password in state |
+| re-plan | ✅ | no changes |
+| `task down` (first destroy of 30-apps and 20-platform) | ✅ | 6 + 46 + 5 destroyed, `cluster:check-clean` passes |
+| `task up` from zero | ✅ | **8.5 minutes**, 57 resources; all 26 checks across the three stacks pass |
+| re-run `task apps:up` (build + push + apply) | ✅ after fix | `No changes` (correction 2) |
+
+**Corrections and why**
+
+| # | What the AI produced | What changed | Why |
+|---|---|---|---|
+| 1 | `platform:check` asserted the cluster's Helm releases were *exactly* the platform's | Assert each platform release is deployed | With the app installed there are 11 releases. Caught by running all checks on the fresh environment. |
+| 2 | Image built with `BUILD_DATE=now` and BuildKit's default provenance | Commit-time `SOURCE_DATE_EPOCH`/`BUILD_DATE`, `--provenance=false` locally | The same commit produced a **new digest on every build** (observed: `a1113c…` vs `c7eea1…`), so every `task apps:up` caused a rollout and Phase 9's "re-apply shows no changes" could never pass. Two test builds proved commit timestamps alone are not enough — provenance attestations embed build times. CI publishes provenance/SBOM separately. |
+
+**Design decisions made up front**
+
+- Helm does not wait for custom resources, so a read-only `kubectl wait` gate sits between the database and the API (the measured 1 s vs 34 s confirms it was needed).
+- Deploy by **digest** read back from the registry, so a rebuilt `-dirty` tag can never be served stale.
+- The database's own network policies live with the database (see P-004 correction 1).
+
+**Assumptions / uncertainties**
+
+- The gate shells out to `kubectl` with the 10-cluster context; on AWS the same module needs the EKS context name (it is a variable).
+- Persistence across pod deletion, isolation from other pods, HPA, rollback and drain are proven in Phase 9.
+
+---
+
 ## 4. Validation summary
 
 | Slice | validate | tflint | checkov/trivy | helm lint | kubeconform | Applied | Tests |

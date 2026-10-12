@@ -18,6 +18,8 @@ vars:
     sh: echo "${DOCKER_HOST:-$(docker context inspect | jq -r '.[0].Endpoints.docker.Host')}"
   CLUSTER_STACK: infra/environments/local/10-cluster
   PLATFORM_STACK: infra/environments/local/20-platform
+  APPS_STACK: infra/environments/local/30-apps
+  REGISTRY: localhost:5001
 
 tasks:
   default:
@@ -39,12 +41,24 @@ tasks:
   build:
     desc: Build the Notes API image tagged with the git SHA (push to the kind registry arrives in Phase 8)
     cmds:
+      # Reproducible: timestamps come from the commit, and provenance attestations (which embed
+      # build times) are off locally, so the same commit always yields the same digest and a
+      # re-run of `task apps:up` is a no-op. CI publishes provenance/SBOM separately (Phase 11).
       - >-
         docker build app
         --tag {{.IMAGE}}:{{.IMAGE_TAG}}
+        --provenance=false
         --build-arg VERSION={{.IMAGE_TAG}}
         --build-arg VCS_REF={{.VCS_REF}}
-        --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        --build-arg SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+        --build-arg BUILD_DATE="$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)"
+
+  push:
+    desc: Build the image and push it to the kind local registry (localhost:5001)
+    deps: [build]
+    cmds:
+      - docker tag {{.IMAGE}}:{{.IMAGE_TAG}} {{.REGISTRY}}/{{.IMAGE}}:{{.IMAGE_TAG}}
+      - docker push --quiet {{.REGISTRY}}/{{.IMAGE}}:{{.IMAGE_TAG}}
 
   scan:
     desc: Lint the Dockerfile and scan the built image for HIGH/CRITICAL fixable vulnerabilities
@@ -156,19 +170,49 @@ tasks:
     cmds:
       - tests/infra/20-platform.sh
 
-  up:
-    desc: Create the local environment — 10-cluster → 20-platform → 30-apps (Phase 5–8)
+  apps:up:
+    desc: Push the image and deploy the database + Notes API (local/30-apps). Extra args go to terraform apply
+    deps: [push]
+    dir: "{{.APPS_STACK}}"
     cmds:
-      - task: _not-implemented
-        vars:
-          PHASE: "5–8"
+      - terraform init -input=false
+      # Deploy by digest, read back from the registry, so a rebuilt "-dirty" tag is never stale.
+      - >-
+        terraform apply
+        -var image_tag={{.IMAGE_TAG}}
+        -var image_digest="$(curl -fsSI
+        -H 'Accept: application/vnd.oci.image.index.v1+json'
+        -H 'Accept: application/vnd.oci.image.manifest.v1+json'
+        -H 'Accept: application/vnd.docker.distribution.manifest.list.v2+json'
+        http://{{.REGISTRY}}/v2/{{.IMAGE}}/manifests/{{.IMAGE_TAG}}
+        | awk 'tolower($1)=="docker-content-digest:" {print $2}' | tr -d '\r')"
+        {{.CLI_ARGS}}
+
+  apps:down:
+    desc: Remove the Notes API and database (local/30-apps). Extra args go to terraform destroy
+    dir: "{{.APPS_STACK}}"
+    cmds:
+      - terraform init -input=false
+      - terraform destroy -var image_tag={{.IMAGE_TAG}} {{.CLI_ARGS}}
+
+  apps:check:
+    desc: Verify the database and the Notes API through the gateway
+    cmds:
+      - tests/infra/30-apps.sh
+
+  up:
+    desc: Create the whole local environment — 10-cluster → 20-platform → 30-apps. e.g. task up -- -auto-approve
+    cmds:
+      - task: cluster:up
+      - task: platform:up
+      - task: apps:up
 
   down:
-    desc: Destroy the local environment — 30-apps → 20-platform → 10-cluster (Phase 5–8)
+    desc: Destroy the whole local environment — 30-apps → 20-platform → 10-cluster. e.g. task down -- -auto-approve
     cmds:
-      - task: _not-implemented
-        vars:
-          PHASE: "5–8"
+      - task: apps:down
+      - task: platform:down
+      - task: cluster:down
 
   test:
     desc: Run the validation suite against the running environment (Phase 9)
