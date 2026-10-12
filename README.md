@@ -35,6 +35,7 @@ Full diagrams in [docs/architecture.md](docs/architecture.md).
 | Document | Purpose |
 |---|---|
 | [Operator guide](docs/operator-guide.md) | Step by step: deploy, use, consoles, test, debug, tear down |
+| [Development process](docs/development-process.md) | How the solution was built: slices, guardrails, verification, deviations |
 | [Project plan](docs/project-plan.md) | Phases, tech stack, Terraform design |
 | [User story](docs/user-story.md) | Epic, stories S1–S11, acceptance criteria |
 | [Architecture](docs/architecture.md) | Topology, network security, Terraform layout, local → AWS |
