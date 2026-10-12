@@ -38,7 +38,13 @@ variable "gateway" {
     service_type            = optional(string, "NodePort")
     node_ports              = optional(map(number), {})
     external_traffic_policy = optional(string, "Cluster")
+    replicas                = optional(number, 2)
   })
+
+  validation {
+    condition     = var.gateway.replicas >= 1 && floor(var.gateway.replicas) == var.gateway.replicas
+    error_message = "gateway.replicas must be a whole number >= 1 (use >= 2 so node drains keep the gateway up)."
+  }
 
   validation {
     condition     = contains(["NodePort", "LoadBalancer", "ClusterIP"], var.gateway.service_type)

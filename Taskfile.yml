@@ -215,11 +215,9 @@ tasks:
       - task: cluster:down
 
   test:
-    desc: Run the validation suite against the running environment (Phase 9)
+    desc: "Phase 9 validation suite against the running environment (~15 min). Subset: CHECKS=\"1 2 3\" task test"
     cmds:
-      - task: _not-implemented
-        vars:
-          PHASE: "9"
+      - tests/e2e/validate.sh
 
   _not-implemented:
     internal: true

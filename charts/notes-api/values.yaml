@@ -79,6 +79,11 @@ httpRoute:
   hostnames: []
   # -- Gateways the route attaches to.
   parentRefs: []
+  retries:
+    # -- Envoy Gateway BackendTrafficPolicy: retry requests that never reached a pod (safe for POST).
+    enabled: true
+    # -- Retries per request.
+    numRetries: 2
 
 # -- Container resources. Requests drive scheduling and HPA utilisation; the memory limit
 # protects the node. No CPU limit, to avoid throttling latency spikes.
@@ -108,11 +113,11 @@ probes:
     timeoutSeconds: 3
     failureThreshold: 2
 
-# -- Seconds to keep serving after termination starts, so endpoints are removed from load
-# balancers before the process stops accepting connections.
-preStopSleepSeconds: 5
+# -- Seconds to keep serving after termination starts, so endpoints are removed from the
+# gateway's load balancing before the process stops accepting connections.
+preStopSleepSeconds: 10
 # -- Must exceed preStopSleepSeconds + config.shutdownTimeoutSeconds.
-terminationGracePeriodSeconds: 30
+terminationGracePeriodSeconds: 40
 
 # -- Pod security context (Pod Security Admission `restricted`).
 podSecurityContext:

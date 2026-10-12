@@ -50,7 +50,7 @@ resource "helm_release" "calico" {
   repository = "https://docs.tigera.io/calico/charts"
   chart      = "tigera-operator"
   version    = var.chart_versions.calico
-  namespace  = kubernetes_namespace_v1.this["tigera-operator"].metadata[0].name
+  namespace  = kubernetes_namespace_v1.tigera_operator[0].metadata[0].name
   timeout    = 600
 
   values = [yamlencode({

@@ -8,6 +8,7 @@ certManager:
 gateway:
   name: platform
   gatewayClassName: envoy
+  replicas: 2
   serviceType: NodePort
   externalTrafficPolicy: Cluster
   nodePorts:

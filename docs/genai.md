@@ -364,6 +364,56 @@ Both failed applies stopped before creating anything (only the namespaces existe
 
 ---
 
+### P-006 — Local validation suite `task test` (Phase 9)
+
+- **Date:** 2026-10-11
+- **Phase / story:** Phase 9 / S4, S5, S6
+- **Goal:** prove the 10 functional checks with one scripted, repeatable suite, passing from a fresh `task down && task up`.
+- **Mode:** design review of each check against the running system → generate → run piecewise → run from zero (**failed**) → diagnose → fix → run from zero
+
+**Prompt**
+
+> lets go with Phase 9: Local validation suite (Functionality criterion)
+
+**Commits**
+
+- Raw AI output: _fill in_
+- Human corrections: _fill in_
+
+**Final evidence (fresh `task up` → `task down` → clean check → `task up` → `task test`, 31.6 min)**
+
+| # | Check | Result |
+|---|---|---|
+| 1 | API reachable from outside | 200 through the gateway, TLS verified against the local CA |
+| 2 | DB not reachable from outside | only non-ClusterIP Service is Envoy; no route or node port for 5432; host connect fails |
+| 3 | Only the API reaches the DB | unlabelled pod in `notes` and pod in `default`: DNS OK, 5432 **timeout**; API pod: connected |
+| 4 | Persistence | note survives deleting the PostgreSQL pod (new UID, same PVC) |
+| 5 | Multiple replicas | 60 requests served by 3 pods (21/20/19) |
+| 6 | Autoscaling | HPA 2 → 3 under k6 (224,244 requests, 0% failed, p95 56 ms), back to 2 |
+| 7 | Modification | Terraform-applied message change, rolling update, 0 errors / 153 requests |
+| 8 | Rollback | `helm rollback`, 0 errors / 73 requests; Terraform reconciles afterwards |
+| 9 | Resilience | drained a worker hosting 1 API + 1 Envoy pod, 0 errors / 133 requests |
+| 10 | Idempotency | `plan -detailed-exitcode` = 0 on all three stacks after checks 5–9 changed things |
+
+**Corrections and why**
+
+| # | Problem | Found by | Fix |
+|---|---|---|---|
+| 1 | Envoy Gateway ran **one** proxy replica without a PDB — draining its node would cut all traffic | design review before writing check 9 | `EnvoyProxy`: 2 replicas, topology spread, PDB `minAvailable: 1` (module input `gateway.replicas`) |
+| 2 | Draining the database's node (local-path PV is node-bound) would stop PostgreSQL and make every API pod unready | design review | Check 9 drains the worker **without** the database; limitation documented (EBS + 3 instances on AWS) |
+| 3 | After one drain, all pods sat on the other worker, so later drain runs passed while disrupting **nothing** | noticing "API pods: 0, Envoy pods: 0" in a passing run | The check respreads pods first and fails as *inconclusive* instead of passing vacuously |
+| 4 | First fresh run: **8 of 55 requests failed** during the drain; not reproducible in 4 targeted reruns | the suite | Monitor now records status, curl exit code and timing for every request. Mitigations for the most plausible cause (Envoy keeps routing to a pod for a moment after it stopped): gateway retries only for requests that never reached a pod (`connect-failure`, `refused-stream`, `reset-before-request` — safe for POST), and `preStop` 5 s → 10 s. **Root cause not proven.** The final fresh run passed with 0 errors. |
+| 5 | Second fresh run: **`task down` hung** — Envoy pods stuck `Terminating`, `gateway` namespace never deleted | the suite's `task down` step | Kubelet log: `KillPodSandbox … plugin type="calico" failed (delete) … Unauthorized`. Terraform had uninstalled **Calico before deleting the namespaces** (no dependency declared), so pod networking could not be torn down. Every non-Calico namespace now `depends_on` the Calico release (`tigera-operator` split out, with a `moved` block). Verified: namespaces destroyed first, Calico last, teardown clean. It had worked in Phase 8 by timing luck. |
+| 6 | `platform:check` required *exactly* the platform's releases | running all checks after Phase 8 | asserts each platform release instead (P-005) |
+
+**Lessons**
+
+- A green run is not proof: two of the bugs (3 and 5) only showed on repeated runs from zero, which is why the plan insists on `task down && task up`.
+- Destroy paths deserve the same testing as create paths; the CNI ordering bug was invisible to every `apply`.
+- When a failure cannot be reproduced, say so: correction 4 is mitigated and monitored, not "fixed".
+
+---
+
 ## 4. Validation summary
 
 | Slice | validate | tflint | checkov/trivy | helm lint | kubeconform | Applied | Tests |

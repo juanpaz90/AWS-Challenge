@@ -81,6 +81,8 @@ Kubernetes: `>=1.33.0-0`
 | httpRoute.enabled | bool | `true` | Create a Gateway API HTTPRoute. |
 | httpRoute.hostnames | list | `[]` | Hostnames served by the route. |
 | httpRoute.parentRefs | list | `[]` | Gateways the route attaches to. |
+| httpRoute.retries.enabled | bool | `true` | Envoy Gateway BackendTrafficPolicy: retry requests that never reached a pod (safe for POST). |
+| httpRoute.retries.numRetries | int | `2` | Retries per request. |
 | image.digest | string | `""` | Optional digest (`sha256:...`); when set it is used instead of the tag. |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy. |
 | image.repository | string | `""` | Image repository (local registry, ECR, ...). Required. |
@@ -102,7 +104,7 @@ Kubernetes: `>=1.33.0-0`
 | podDisruptionBudget.minAvailable | int | `1` | Minimum pods available during voluntary disruptions (node drains, upgrades). |
 | podLabels | object | `{}` | Extra pod labels. |
 | podSecurityContext | object | `{"runAsGroup":10001,"runAsNonRoot":true,"runAsUser":10001,"seccompProfile":{"type":"RuntimeDefault"}}` | Pod security context (Pod Security Admission `restricted`). |
-| preStopSleepSeconds | int | `5` | Seconds to keep serving after termination starts, so endpoints are removed from load balancers before the process stops accepting connections. |
+| preStopSleepSeconds | int | `10` | Seconds to keep serving after termination starts, so endpoints are removed from the gateway's load balancing before the process stops accepting connections. |
 | probes.liveness | object | `{"failureThreshold":3,"path":"/healthz","periodSeconds":10,"timeoutSeconds":2}` | Liveness probe: restarts the container if the process stops serving. |
 | probes.readiness | object | `{"failureThreshold":2,"path":"/readyz","periodSeconds":5,"timeoutSeconds":3}` | Readiness probe: removes the pod from the Service while the database is unreachable. |
 | probes.startup | object | `{"failureThreshold":30,"path":"/healthz","periodSeconds":2}` | Startup probe: gives the app up to failureThreshold × periodSeconds to start. |
@@ -117,6 +119,6 @@ Kubernetes: `>=1.33.0-0`
 | serviceMonitor.enabled | bool | `true` | Create a Prometheus Operator ServiceMonitor. |
 | serviceMonitor.interval | string | `"30s"` | Scrape interval. |
 | serviceMonitor.labels | object | `{}` | Extra labels on the ServiceMonitor. |
-| terminationGracePeriodSeconds | int | `30` | Must exceed preStopSleepSeconds + config.shutdownTimeoutSeconds. |
+| terminationGracePeriodSeconds | int | `40` | Must exceed preStopSleepSeconds + config.shutdownTimeoutSeconds. |
 | tolerations | list | `[]` | Tolerations. |
 | topologySpread | list | `[{"maxSkew":1,"topologyKey":"kubernetes.io/hostname","whenUnsatisfiable":"ScheduleAnyway"}]` | Spread pods across these topology keys (one constraint each). `ScheduleAnyway` keeps pods schedulable while a node is drained; `Honor` ignores nodes the pods cannot run on. |

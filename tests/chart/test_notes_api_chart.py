@@ -145,6 +145,12 @@ def test_network_policies(local):
     assert "ingress" not in pols["notes-api-migration"], "migration pods accept no traffic"
 
 
+def test_gateway_retries_only_requests_that_never_reached_a_pod(local):
+    policy = one(local, "BackendTrafficPolicy")["spec"]
+    assert policy["targetRefs"] == [{"group": "gateway.networking.k8s.io", "kind": "HTTPRoute", "name": "notes-api"}]
+    assert set(policy["retry"]["retryOn"]["triggers"]) == {"connect-failure", "refused-stream", "reset-before-request"}
+
+
 def test_route_attaches_to_shared_gateway_https(local):
     route = one(local, "HTTPRoute")["spec"]
     assert route["hostnames"] == ["api.localtest.me"]

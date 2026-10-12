@@ -19,6 +19,7 @@ ClusterIssuers, the CA and wildcard certificates, the `EnvoyProxy`, `GatewayClas
 ## Notable choices
 
 - **Calico CRDs applied by Terraform.** Since v3.33 the `tigera-operator` chart no longer ships CRDs. The CRD chart is too large to be a Helm release (the release Secret would exceed 1 MiB), so it is rendered with `helm_template` and each CRD is applied with `kubernetes_manifest`; `manageCRDs=false` keeps Terraform the single owner.
+- **Gateway availability.** Envoy runs `gateway.replicas` (default 2) replicas spread across nodes with a PDB (`minAvailable: 1`), so draining a node never removes the only entry point (proven by Phase 9 check 9).
 - **Gateway exposure.** On kind the Envoy Service is a `NodePort` pinned (via `EnvoyProxy` patch) to the ports kind maps to the host, with `externalTrafficPolicy: Cluster` so the control-plane node forwards traffic even though no Envoy pod runs on it.
 - **TLS.** self-signed `ClusterIssuer` → `local-ca` CA certificate → `local-ca` `ClusterIssuer` → wildcard `*.<domain>` certificate on the Gateway. HTTP redirects to HTTPS.
 - **Route admission.** The HTTPS listener only accepts `HTTPRoute`s from namespaces labelled `platform.notes/gateway-access=true`.
@@ -57,6 +58,7 @@ ClusterIssuers, the CA and wildcard certificates, the `EnvoyProxy`, `GatewayClas
 | [helm_release.platform_config](https://registry.terraform.io/providers/hashicorp/helm/latest/docs/resources/release) | resource |
 | [kubernetes_manifest.calico_crds](https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/manifest) | resource |
 | [kubernetes_namespace_v1.this](https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/namespace_v1) | resource |
+| [kubernetes_namespace_v1.tigera_operator](https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/resources/namespace_v1) | resource |
 | [helm_template.calico_crds](https://registry.terraform.io/providers/hashicorp/helm/latest/docs/data-sources/template) | data source |
 
 ## Inputs
@@ -65,7 +67,7 @@ ClusterIssuers, the CA and wildcard certificates, the `EnvoyProxy`, `GatewayClas
 | ---- | ----------- | ---- | ------- | :------: |
 | calico | Calico CNI via the Tigera operator (ADR-0005). Disable where the platform provides a NetworkPolicy-capable CNI (EKS VPC CNI). | <pre>object({<br/>    enabled             = bool<br/>    kubernetes_provider = optional(string, "Kind")<br/>    pod_subnet          = optional(string, "10.244.0.0/16")<br/>  })</pre> | n/a | yes |
 | chart\_versions | Exact chart versions. Verify status (active/deprecated/retired) before bumping. | <pre>object({<br/>    calico                = string<br/>    cert_manager          = string<br/>    envoy_gateway         = string<br/>    metrics_server        = string<br/>    cloudnative_pg        = string<br/>    kube_prometheus_stack = string<br/>    loki                  = string<br/>    alloy                 = string<br/>  })</pre> | n/a | yes |
-| gateway | Shared Envoy Gateway (ADR-0003). On kind the proxy Service is a NodePort matching the cluster's host port mappings. | <pre>object({<br/>    domain                  = string<br/>    service_type            = optional(string, "NodePort")<br/>    node_ports              = optional(map(number), {})<br/>    external_traffic_policy = optional(string, "Cluster")<br/>  })</pre> | n/a | yes |
+| gateway | Shared Envoy Gateway (ADR-0003). On kind the proxy Service is a NodePort matching the cluster's host port mappings. | <pre>object({<br/>    domain                  = string<br/>    service_type            = optional(string, "NodePort")<br/>    node_ports              = optional(map(number), {})<br/>    external_traffic_policy = optional(string, "Cluster")<br/>    replicas                = optional(number, 2)<br/>  })</pre> | n/a | yes |
 | observability | kube-prometheus-stack, Loki (single binary) and Alloy (ADR-0006). | <pre>object({<br/>    enabled              = bool<br/>    prometheus_retention = optional(string, "24h")<br/>    loki_storage_size    = optional(string, "5Gi")<br/>  })</pre> | n/a | yes |
 | labels | Labels added to namespaces created by this module. | `map(string)` | `{}` | no |
 | local\_registry\_host | Publishes kind's local-registry-hosting ConfigMap (KEP-1755) for this host, e.g. localhost:5001. null on clusters without a local registry. | `string` | `null` | no |

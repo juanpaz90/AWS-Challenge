@@ -18,9 +18,12 @@ spec:
     kind: ClusterIssuer
     group: cert-manager.io
 ---
-# How Envoy Gateway exposes the proxy. On kind: NodePorts that match the host port mappings,
-# with externalTrafficPolicy Cluster so the control-plane node (where the mappings land)
-# forwards traffic even though no Envoy pod runs there.
+# How Envoy Gateway runs and exposes the proxy:
+# - several replicas spread across nodes, with a PDB, so a node drain never takes the only
+#   entry point down;
+# - on kind: NodePorts that match the host port mappings, with externalTrafficPolicy Cluster
+#   so the control-plane node (where the mappings land) forwards traffic even though no Envoy
+#   pod runs there.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyProxy
 metadata:
@@ -30,6 +33,21 @@ spec:
   provider:
     type: Kubernetes
     kubernetes:
+      envoyDeployment:
+        replicas: {{ $gw.replicas }}
+        pod:
+          topologySpreadConstraints:
+            - topologyKey: kubernetes.io/hostname
+              maxSkew: 1
+              whenUnsatisfiable: ScheduleAnyway
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: envoy
+                  gateway.envoyproxy.io/owning-gateway-name: {{ $gw.name }}
+      {{- if gt (int $gw.replicas) 1 }}
+      envoyPDB:
+        minAvailable: 1
+      {{- end }}
       envoyService:
         type: {{ $gw.serviceType }}
         externalTrafficPolicy: {{ $gw.externalTrafficPolicy }}

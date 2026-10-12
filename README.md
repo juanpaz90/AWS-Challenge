@@ -4,7 +4,7 @@ Deploy a sample API (multiple replicas) and its PostgreSQL database with persist
 
 **Local-first, cloud-ready:** everything runs on a Terraform-managed `kind` cluster, and the same charts and platform layer are reused on AWS EKS.
 
-> Status: 🚧 Phases 0–8 done — the full local stack comes up with one command. See the [milestone checklist](docs/project-plan.md#11-milestone-checklist).
+> Status: ✅ Milestone 1 (core, local) done — `task up` builds everything from zero and `task test` proves all 10 functional checks. See the [milestone checklist](docs/project-plan.md#11-milestone-checklist).
 
 ## Quick start
 
@@ -32,6 +32,7 @@ Full diagrams in [docs/architecture.md](docs/architecture.md).
 
 | Document | Purpose |
 |---|---|
+| [Operator guide](docs/operator-guide.md) | Step by step: deploy, use, consoles, test, debug, tear down |
 | [Project plan](docs/project-plan.md) | Phases, tech stack, Terraform design |
 | [User story](docs/user-story.md) | Epic, stories S1–S11, acceptance criteria |
 | [Architecture](docs/architecture.md) | Topology, network security, Terraform layout, local → AWS |

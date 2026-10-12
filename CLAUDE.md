@@ -35,6 +35,8 @@ Do **not** introduce: ingress-nginx (retired), Bitnami charts/images, Promtail (
   - Tags/labels come from a shared `tags` / `labels` variable.
 - **Versions:** pin Terraform, providers, charts and images exactly. **Never `latest`.** If unsure a version or argument exists, say so — do not guess. Verify against the pinned version's docs: use the `terraform` MCP server (`.mcp.json`) for provider and module docs, and `helm show values <chart> --version <v>` for charts.
 - **Custom resources:** a CR whose CRD is installed in the *same* stack goes into a local Helm chart (see `platform-addons/charts/platform-config`), never `kubernetes_manifest`, which fails at plan time before the CRD exists. CRDs themselves may use `kubernetes_manifest`.
+- **Destroy order:** anything that runs pods must be destroyed before the CNI (`depends_on` the Calico release), or pods hang in `Terminating` once the CNI is gone. Always test `task down` as well as `task up`.
+- **Tests must not pass vacuously:** a resilience check must first prove it disrupts something (e.g. the drained node actually hosts the pods under test).
 - **Readiness:** Helm does not wait for custom resources (e.g. a CNPG `Cluster`). When a later release depends on one being Ready, add an explicit gate (see `notes-app`'s `database_ready`).
 - **Images:** builds are reproducible (commit timestamps, no local provenance) and releases pin the registry digest, so re-running `task apps:up` is a no-op.
 - **Helm:** `values.schema.json` for every chart; per-environment values files; secrets referenced by name (`existingSecret`), never templated.

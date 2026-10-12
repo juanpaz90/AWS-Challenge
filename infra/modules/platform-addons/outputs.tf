@@ -23,5 +23,5 @@ output "grafana_url" {
 
 output "namespaces" {
   description = "Namespaces created by this module and their Pod Security enforce level."
-  value       = { for k, v in local.namespaces : k => v.enforce }
+  value       = merge({ for k, v in local.namespaces : k => v.enforce }, var.calico.enabled ? { "tigera-operator" = "privileged" } : {})
 }

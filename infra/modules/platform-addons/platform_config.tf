@@ -28,6 +28,7 @@ resource "helm_release" "platform_config" {
     gateway = {
       name                  = "platform"
       gatewayClassName      = "envoy"
+      replicas              = var.gateway.replicas
       serviceType           = var.gateway.service_type
       externalTrafficPolicy = var.gateway.external_traffic_policy
       nodePorts             = var.gateway.node_ports

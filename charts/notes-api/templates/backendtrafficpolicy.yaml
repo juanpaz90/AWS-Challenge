@@ -1,0 +1,23 @@
+{{- if and .Values.httpRoute.enabled .Values.httpRoute.retries.enabled }}
+# Envoy retries requests that never reached a pod (connection refused/reset before the
+# request was sent), e.g. when an endpoint is removed a moment later than its pod stopped
+# during a rollout or node drain. These triggers are safe for non-idempotent requests.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: {{ include "notes-api.fullname" . }}
+  labels:
+    {{- include "notes-api.labels" . | nindent 4 }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: {{ include "notes-api.fullname" . }}
+  retry:
+    numRetries: {{ .Values.httpRoute.retries.numRetries }}
+    retryOn:
+      triggers:
+        - connect-failure
+        - refused-stream
+        - reset-before-request
+{{- end }}

@@ -7,7 +7,7 @@
 | Action | Command |
 |---|---|
 | Bring everything up | `task up` (add `-- -auto-approve` to skip the three prompts) |
-| Run the validation suite | `task test` |
+| Run the validation suite | `task test` (all 10 checks, ~15 min) · `CHECKS="1 2 3" task test` for a subset |
 | Tear everything down | `task down` |
 | Cluster only | `task cluster:up` / `task cluster:down` (add `-- -auto-approve` to skip the prompt) |
 | Verify cluster / verify teardown | `task cluster:check` / `task cluster:check-clean` |
@@ -108,7 +108,7 @@ curl -sk https://api.localtest.me/healthz
 kubectl uncordon <node>
 ```
 
-The PDB keeps at least one API replica available. **Locally**, the DB PVC on `local-path` is bound to one node: draining that node makes the DB unavailable until the node is uncordoned.
+The API PDB keeps at least one API replica available and the gateway PDB at least one Envoy replica. **Locally**, the DB PVC on `local-path` is bound to one node: draining that node makes the DB unavailable (and the API unready, since `/readyz` checks the DB) until the node is uncordoned. Find it with `kubectl -n notes get pod -l cnpg.io/instanceRole=primary -o wide`. On AWS, EBS volumes follow the pod within the AZ and the 3-instance cluster fails over.
 
 ### Database failover (AWS, 3 instances)
 
