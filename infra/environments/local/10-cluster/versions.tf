@@ -9,7 +9,7 @@ terraform {
   required_providers {
     kind = {
       source  = "tehcyx/kind"
-      version = "= 0.11.0" # embeds kind v0.31.0 — node images must come from that release
+      version = "0.13.0" # embeds kind v0.31.0 — node images must come from that release
     }
     docker = {
       source  = "kreuzwerker/docker"
